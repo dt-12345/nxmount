@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/cache.hpp"
 #include "crypto/crypto.hpp"
 #include "formats/nca.hpp"
 #include "provider/cache_provider.hpp"
@@ -212,12 +213,6 @@ public:
     static constexpr const std::size_t cHashSize = 0x20;
     static constexpr const std::size_t cMaxHashCount = 0x4000;
 
-    static constexpr const std::size_t cHashCacheSize = 4;
-    static constexpr const std::size_t cDataCacheSize = 8;
-
-    using HashProvider = CacheProvider<cHashCacheSize>;
-    using DataProvider = CacheProvider<cDataCacheSize>;
-
     IntegrityVerificationProvider(UniqueProvider hashProvider, UniqueProvider dataProvider, std::size_t blockOrder);
 
     ~IntegrityVerificationProvider() override = default;
@@ -229,6 +224,7 @@ public:
 private:
     UniqueProvider mHashProvider;
     UniqueProvider mDataProvider;
+    common::CacheSet<std::size_t, 0x20> mVerifyCache;
     std::size_t mBlockOrder;
 };
 

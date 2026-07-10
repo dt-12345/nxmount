@@ -269,20 +269,25 @@ auto IntegrityVerificationProvider::read(void* dst, std::size_t size, std::size_
         const auto hashCount = std::min(capacity, remaining);
         const auto hashOffset = ((offset + (current << mBlockOrder)) >> mBlockOrder) * cHashSize;
         const auto hashSize = hashCount * cHashSize;
+        if (mVerifyCache.get(hashOffset)) {
+            current += hashCount;
+            remaining -= hashCount;
+            continue;
+        }
+
         if (mHashProvider->read(hashBuf.data(), hashSize, hashOffset) != hashSize) {
             return 0;
         }
 
         for (std::size_t i = 0; i < hashCount; ++i) {
+            if (mVerifyCache.get(hashOffset + i * cHashSize)) {
+                continue;
+            }
             if (!crypto::Sha256Verify(buf + ((current + i) << mBlockOrder), blockSize, hashBuf.data() + i * cHashSize)) {
                 LOG_WARNING("Hierarchical integrity verification failed! {:#x} {}", offset + ((current + i) << mBlockOrder), i);
-                std::uint8_t hash[cHashSize];
-                crypto::Sha256(buf + ((current + i) << mBlockOrder), blockSize, hash);
-                LOG_WARNING("Got: {}", hash);
-                std::memcpy(hash, hashBuf.data() + i * cHashSize, sizeof(hash));
-                LOG_WARNING("Wanted: {}", hash);
-                LOG_FATAL("");
                 return 0;
+            } else {
+                mVerifyCache.add(hashOffset + i * cHashSize);
             }
         }
 
@@ -317,11 +322,12 @@ HierarchicalIntegrityVerificationProvider::HierarchicalIntegrityVerificationProv
     std::unique_ptr<LayerProvider> currentProvider = nullptr;
 
     std::size_t lastBlockSize = hashData.masterHashSize;
+    std::size_t lastCacheSize = 0;
     for (std::size_t i = 0; i < hashData.levelHashInfo.maxLayers - 2; ++i) { // -2 because the master hash and final data layers are unique
         const auto& info = hashData.levelHashInfo.info[i];
         UniqueProvider hashProvider;
         if (currentProvider != nullptr) {
-            hashProvider = std::make_unique<IntegrityVerificationProvider::HashProvider>(std::move(currentProvider), lastBlockSize);
+            hashProvider = std::make_unique<CacheProvider<>>(std::move(currentProvider), lastBlockSize, lastCacheSize);
         } else if (masterHashProvider != nullptr) {
             hashProvider = std::move(masterHashProvider);
         } else {
@@ -333,10 +339,14 @@ HierarchicalIntegrityVerificationProvider::HierarchicalIntegrityVerificationProv
             throw std::runtime_error("HierarchicalIntegrityVerificationProvider");
         }
 
+        const auto blockSize = 1 << info.blockOrder;
+        const auto cacheSize = std::min(8ull, static_cast<std::size_t>((info.size + blockSize - 1) / blockSize));
+        lastCacheSize = cacheSize;
+
         auto dataProvider = std::make_unique<SharedOffsetProvider>(provider, layerInfoOffset + info.offset, info.size);
-        auto cacheDataProvider = std::make_unique<IntegrityVerificationProvider::DataProvider>(std::move(dataProvider), 1 << info.blockOrder);
+        auto cacheDataProvider = std::make_unique<CacheProvider<>>(std::move(dataProvider), blockSize, cacheSize);
         auto integrityProvider = std::make_unique<IntegrityVerificationProvider>(std::move(hashProvider), std::move(cacheDataProvider), info.blockOrder);
-        currentProvider = std::make_unique<LayerProvider>(std::move(integrityProvider), 1 << info.blockOrder);
+        currentProvider = std::make_unique<LayerProvider>(std::move(integrityProvider), blockSize);
 
         lastBlockSize = 1ull << info.blockOrder;
     }
@@ -344,7 +354,7 @@ HierarchicalIntegrityVerificationProvider::HierarchicalIntegrityVerificationProv
     const auto& dataInfo = hashData.levelHashInfo.info[hashData.levelHashInfo.maxLayers - 2];
     UniqueProvider hashProvider;
     if (currentProvider != nullptr) {
-        hashProvider = std::make_unique<IntegrityVerificationProvider::HashProvider>(std::move(currentProvider), lastBlockSize);
+        hashProvider = std::make_unique<CacheProvider<>>(std::move(currentProvider), lastBlockSize, lastCacheSize);
     } else if (masterHashProvider != nullptr) {
         hashProvider = std::move(masterHashProvider);
     } else {
@@ -352,12 +362,11 @@ HierarchicalIntegrityVerificationProvider::HierarchicalIntegrityVerificationProv
         throw std::runtime_error("HierarchicalIntegrityVerificationProvider");
     }
 
-    // auto dataProvider = std::make_unique<SharedOffsetProvider>(provider, layerInfoOffset > 0 ? 0 : dataInfo.offset, dataInfo.size);
-    // auto cacheDataProvider = std::make_unique<IntegrityVerificationProvider::DataProvider>(std::move(dataProvider), 1ull << dataInfo.blockOrder);
-    // auto integrityProvider = std::make_unique<IntegrityVerificationProvider>(std::move(hashProvider), std::move(cacheDataProvider), dataInfo.blockOrder);
-    // auto layerProvider = std::make_unique<LayerProvider>(std::move(integrityProvider), 1 << dataInfo.blockOrder);
-    // mProvider = std::make_unique<CacheProvider<16, std::unique_ptr<LayerProvider>>>(std::move(layerProvider), 1ull << dataInfo.blockOrder);
-    mProvider = std::make_unique<SharedOffsetProvider>(provider, layerInfoOffset > 0 ? 0 : dataInfo.offset, dataInfo.size);
+    auto dataProvider = std::make_unique<SharedOffsetProvider>(provider, layerInfoOffset > 0 ? 0 : dataInfo.offset, dataInfo.size);
+    auto cacheDataProvider = std::make_unique<CacheProvider<>>(std::move(dataProvider), 1ull << dataInfo.blockOrder, 16);
+    auto integrityProvider = std::make_unique<IntegrityVerificationProvider>(std::move(hashProvider), std::move(cacheDataProvider), dataInfo.blockOrder);
+    auto layerProvider = std::make_unique<LayerProvider>(std::move(integrityProvider), 1 << dataInfo.blockOrder);
+    mProvider = std::make_unique<CacheProvider<>>(std::move(layerProvider), 1ull << dataInfo.blockOrder, 16);
 }
 
 auto HierarchicalIntegrityVerificationProvider::read(void* dst, std::size_t size, std::size_t offset) -> std::size_t {

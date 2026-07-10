@@ -605,21 +605,21 @@ auto NintendoContentArchiveFileSystem::createAesCtrExProvider(
         header.patchInfo.aesCtrExHeader.entryCount, std::move(nodeProvider), std::move(entryProvider)
     );
 
-    using AesCtrExCacheProvider = provider::CacheProvider<32, std::unique_ptr<provider::AesCtrExProvider>>;
     const auto blockSize = std::min(aesCtrExProvider->getSize(), std::size_t(0x1000));
-    auto cacheProvider = std::make_unique<AesCtrExCacheProvider>(std::move(aesCtrExProvider), blockSize);
+    const auto cacheSize = std::min(32ull, (aesCtrExProvider->getSize() + blockSize - 1) / blockSize);
+    auto cacheProvider = std::make_unique<provider::CacheProvider<>>(std::move(aesCtrExProvider), blockSize, cacheSize);
 
-    return std::make_unique<provider::AlignedProvider<provider::AesCtrExProvider::cBlockSize, std::unique_ptr<AesCtrExCacheProvider>>>(std::move(cacheProvider));
+    return std::make_unique<provider::AlignedProvider<provider::AesCtrExProvider::cBlockSize>>(std::move(cacheProvider));
 }
 
 auto NintendoContentArchiveFileSystem::createAesCtrProvider(provider::UniqueProvider provider, const AesCtrUpperIv& upperIv, std::size_t offset) const -> provider::UniqueProvider {
-    using AesCacheProvider = provider::CacheProvider<16, std::unique_ptr<provider::AesCtrProvider>>;
     auto aesCtrProvider = std::make_unique<provider::AesCtrProvider>(std::move(provider), getDecryptionKey(DecryptionKey_AesCtr), upperIv, offset);
 
     const auto blockSize = common::AlignUp(std::min(aesCtrProvider->getSize(), std::size_t(0x800)), provider::AesCtrProvider::cBlockSize);
-    auto cacheProvider = std::make_unique<AesCacheProvider>(std::move(aesCtrProvider), blockSize);
+    const auto cacheSize = std::min(16ull, (aesCtrProvider->getSize() + blockSize - 1) / blockSize);
+    auto cacheProvider = std::make_unique<provider::CacheProvider<>>(std::move(aesCtrProvider), blockSize, cacheSize);
 
-    return std::make_unique<provider::AlignedProvider<provider::AesCtrProvider::cBlockSize, std::unique_ptr<AesCacheProvider>>>(std::move(cacheProvider));
+    return std::make_unique<provider::AlignedProvider<provider::AesCtrProvider::cBlockSize>>(std::move(cacheProvider));
 }
 
 auto NintendoContentArchiveFileSystem::createDecryptedProvider(provider::UniqueProvider provider, const FsHeader& header, const FsInfo& info) const -> provider::UniqueProvider {
@@ -686,14 +686,12 @@ auto NintendoContentArchiveFileSystem::createIndirectProvider(
 }
 
 auto NintendoContentArchiveFileSystem::createSha256Provider(provider::UniqueProvider provider, const HashData::HierarchicalSha256HashData& hashData) const -> provider::UniqueProvider {
-    using CachedSha256Provider = provider::CacheProvider<32, std::unique_ptr<provider::Sha256Provider>>;
-    using AlignedSha256Provider = provider::AlignedProvider<provider::DYNAMIC, std::unique_ptr<CachedSha256Provider>>;
-
     auto shaProvider = std::make_unique<provider::Sha256Provider>(std::move(provider), hashData);
 
-    auto cacheProvider = std::make_unique<CachedSha256Provider>(std::move(shaProvider), hashData.blockSize);
+    const auto cacheSize = std::min(32ull, (shaProvider->getSize() + hashData.blockSize - 1) / hashData.blockSize);
+    auto cacheProvider = std::make_unique<provider::CacheProvider<>>(std::move(shaProvider), hashData.blockSize, cacheSize);
 
-    return std::make_unique<AlignedSha256Provider>(std::move(cacheProvider), hashData.blockSize);
+    return std::make_unique<provider::AlignedProvider<provider::DYNAMIC>>(std::move(cacheProvider), hashData.blockSize);
 }
 
 auto NintendoContentArchiveFileSystem::getDecryptionKey(DecryptionKey type) const -> const std::uint8_t(&)[0x10] {

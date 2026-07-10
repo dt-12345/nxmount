@@ -9,12 +9,13 @@
 
 namespace nxmount::provider {
 
-template <std::size_t CacheSize, ProviderWrapper ProviderT = UniqueProvider>
+template <ProviderWrapper ProviderT = UniqueProvider>
 class CacheProvider final : public ReadOnlyBytesProvider {
 public:
     static constexpr const std::size_t cMaxBlockSize = 0x10000;
 
-    CacheProvider(ProviderT provider, std::size_t blockSize) : mProvider(std::move(provider)), mBlockSize(std::min(blockSize, cMaxBlockSize)) {}
+    CacheProvider(ProviderT provider, std::size_t blockSize, std::size_t cacheSize)
+     : mProvider(std::move(provider)), mBlockSize(std::min(blockSize, cMaxBlockSize)), mCacheSize(std::max(cacheSize, 1ull)) {}
 
     ~CacheProvider() override = default;
 
@@ -163,14 +164,15 @@ private:
     }
 
     auto getLru() -> NodeList::iterator {
-        if (mCache.size() < CacheSize) {
+        if (mCache.size() < mCacheSize) {
             mCache.emplace_back(-1, std::make_unique<std::uint8_t[]>(mBlockSize));
         }
         return std::prev(mCache.end());
     }
 
     ProviderT mProvider;
-    std::size_t mBlockSize;
+    const std::size_t mBlockSize;
+    const std::size_t mCacheSize;
     mutable std::mutex mCacheMutex;
     NodeList mCache;
     std::unordered_map<std::int64_t, typename NodeList::iterator> mCacheMap;

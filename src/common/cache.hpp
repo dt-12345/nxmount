@@ -72,4 +72,65 @@ private:
     CacheMap mCacheMap;
 };
 
+
+template <typename Key,std::size_t CacheSize>
+class CacheSet {
+public:
+    CacheSet() = default;
+
+    template <typename KeyType>
+    auto get(KeyType key) -> bool {
+        const auto _ = std::unique_lock(mMutex);
+        if (const auto res = mCacheMap.find(key); res != mCacheMap.end()) {
+            setMru(res->second);
+            return true;
+        }
+        return false;
+    }
+
+    template <typename KeyType>
+    auto add(KeyType key) -> void {
+        const auto _ = std::unique_lock(mMutex);
+        auto lru = getLru();
+        mCacheMap.erase(lru->key);
+        lru->key = key;
+        setMru(lru);
+        mCacheMap.emplace(lru->key, lru);
+    }
+
+    auto emplace(Key&& key) -> void {
+        const auto _ = std::unique_lock(mMutex);
+        auto lru = getLru();
+        mCacheMap.erase(lru->key);
+        lru->key = std::move(key);
+        setMru(lru);
+        mCacheMap.emplace(lru->key, lru);
+    }
+
+private:
+    struct Node {
+        Key key;
+    };
+
+    using NodeList = std::list<Node>;
+    using CacheMap = std::conditional_t<std::is_same_v<Key, std::string>, StringMap<typename NodeList::iterator>, std::unordered_map<Key, typename NodeList::iterator>>;
+
+    auto setMru(NodeList::iterator it) -> void {
+        if (it != mCache.begin()) {
+            mCache.splice(mCache.begin(), mCache, it, std::next(it));
+        }
+    }
+
+    auto getLru() -> NodeList::iterator {
+        if (mCache.size() < CacheSize) {
+            mCache.emplace_back();
+        }
+        return std::prev(mCache.end());
+    }
+
+    std::mutex mMutex;
+    NodeList mCache;
+    CacheMap mCacheMap;
+};
+
 } // namespace nxmount::common
