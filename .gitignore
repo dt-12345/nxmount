@@ -1,0 +1,7 @@
+*build*/*
+.*/*
+*.xci
+*.nsp
+*.nca
+*.py
+*.code-workspace

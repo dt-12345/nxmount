@@ -1,0 +1,12 @@
+[submodule "lib/fmt"]
+	path = lib/fmt
+	url = https://github.com/fmtlib/fmt.git
+[submodule "lib/cryptopp-cmake"]
+	path = lib/cryptopp-cmake
+	url = https://github.com/abdes/cryptopp-cmake.git
+[submodule "lib/zlib"]
+	path = lib/zlib
+	url = https://github.com/madler/zlib.git
+[submodule "lib/cryptopp"]
+	path = lib/cryptopp
+	url = https://github.com/weidai11/cryptopp.git
