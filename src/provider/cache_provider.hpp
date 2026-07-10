@@ -14,11 +14,7 @@ class CacheProvider final : public ReadOnlyBytesProvider {
 public:
     static constexpr const std::size_t cMaxBlockSize = 0x10000;
 
-    CacheProvider(ProviderT provider, std::size_t blockSize) : mProvider(std::move(provider)), mBlockSize(std::min(blockSize, cMaxBlockSize)) {
-        for (std::size_t i = 0; i < CacheSize; ++i) {
-            mCache.emplace_back(-1, std::make_unique<std::uint8_t[]>(mBlockSize));
-        }
-    }
+    CacheProvider(ProviderT provider, std::size_t blockSize) : mProvider(std::move(provider)), mBlockSize(std::min(blockSize, cMaxBlockSize)) {}
 
     ~CacheProvider() override = default;
 
@@ -167,6 +163,9 @@ private:
     }
 
     auto getLru() -> NodeList::iterator {
+        if (mCache.size() < CacheSize) {
+            mCache.emplace_back(-1, std::make_unique<std::uint8_t[]>(mBlockSize));
+        }
         return std::prev(mCache.end());
     }
 

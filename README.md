@@ -31,3 +31,4 @@ nxmount --base MyGame.nsp --update GameUpdate.nsp --mount ~/Game
 - Convert WinFuse version into a background service
   - Currently runs in the foreground regardless of the CLI option because only the CygWin version supports daemonization
 - WinFsp driver (maybe this will fix the Windows performance)
+- Memory usage is too high for such a simple project

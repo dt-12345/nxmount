@@ -199,8 +199,8 @@ public:
     static constexpr const std::size_t cHashSize = 0x20;
     static constexpr const std::size_t cMaxHashCount = 0x4000;
 
-    static constexpr const std::size_t cHashCacheSize = 32;
-    static constexpr const std::size_t cDataCacheSize = 32;
+    static constexpr const std::size_t cHashCacheSize = 4;
+    static constexpr const std::size_t cDataCacheSize = 8;
 
     using HashProvider = CacheProvider<cHashCacheSize>;
     using DataProvider = CacheProvider<cDataCacheSize>;

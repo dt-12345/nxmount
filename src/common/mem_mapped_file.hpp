@@ -8,7 +8,7 @@ namespace nxmount::common {
 
 class MemMappedFile {
 public:
-    MemMappedFile() = default;
+    MemMappedFile() : mFileHandle(cNullHandle), mMapped(nullptr), mSize(0) {}
 
     explicit MemMappedFile(std::string_view path);
 

@@ -17,7 +17,7 @@
 
 namespace nxmount::common {
 
-MemMappedFile::MemMappedFile(std::string_view path) {
+MemMappedFile::MemMappedFile(std::string_view path) : mFileHandle(cNullHandle), mMapped(nullptr), mSize(0) {
     open(path);
 }
 

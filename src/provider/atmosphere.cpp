@@ -338,7 +338,7 @@ HierarchicalIntegrityVerificationProvider::HierarchicalIntegrityVerificationProv
     auto cacheDataProvider = std::make_unique<IntegrityVerificationProvider::DataProvider>(std::move(dataProvider), 1ull << dataInfo.blockOrder);
     auto integrityProvider = std::make_unique<IntegrityVerificationProvider>(std::move(hashProvider), std::move(cacheDataProvider), dataInfo.blockOrder);
     auto layerProvider = std::make_unique<LayerProvider>(std::move(integrityProvider), 1 << dataInfo.blockOrder);
-    mProvider = std::make_unique<CacheProvider<32, std::unique_ptr<LayerProvider>>>(std::move(layerProvider), 1ull << dataInfo.blockOrder);
+    mProvider = std::make_unique<CacheProvider<16, std::unique_ptr<LayerProvider>>>(std::move(layerProvider), 1ull << dataInfo.blockOrder);
 }
 
 auto HierarchicalIntegrityVerificationProvider::read(void* dst, std::size_t size, std::size_t offset) -> std::size_t {
