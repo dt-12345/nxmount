@@ -10,7 +10,6 @@
 #include "formats/romfs.hpp"
 #include "fs/filesystem.hpp"
 #include "log/logging.hpp"
-#include "npdm.hpp"
 #include "provider/cache_provider.hpp"
 #include "provider/file_provider.hpp"
 #include "provider/memory_stream_provider.hpp"
@@ -295,7 +294,7 @@ auto NintendoContentArchiveFileSystem::initializeFileSystems(NintendoContentArch
 
             switch (mHeader.header.contentType) {
                 case ContentType::Program:
-                    if (SUCCEEDED(mFileSystems[i].fs->access("main.npdm", fs::OpenMode::Read))) {
+                    if (NX_SUCCEEDED(mFileSystems[i].fs->access("main.npdm", fs::OpenMode::Read))) {
                         if (foundExefs) {
                             LOG_WARNING("Multiple exefs sections found!");
                             fmt::format_to(std::back_inserter(mFileSystems[i].name), "exefs{}", i);
@@ -304,7 +303,7 @@ auto NintendoContentArchiveFileSystem::initializeFileSystems(NintendoContentArch
                             foundExefs = true;
                             verifyNPDMSignature(mFileSystems[i]);
                         }
-                    } else if (SUCCEEDED(mFileSystems[i].fs->access("StartupMovie.gif", fs::OpenMode::Read))) {
+                    } else if (NX_SUCCEEDED(mFileSystems[i].fs->access("StartupMovie.gif", fs::OpenMode::Read))) {
                         if (foundLogo) {
                             LOG_WARNING("Multiple logo sections found!");
                             fmt::format_to(std::back_inserter(mFileSystems[i].name), "logo{}", i);
@@ -341,7 +340,7 @@ auto NintendoContentArchiveFileSystem::initializeFileSystems(NintendoContentArch
 
 auto NintendoContentArchiveFileSystem::verifyNPDMSignature(NCAFileSystem& fs) -> void {
     std::unique_ptr<fs::IFile> file;
-    if (SUCCEEDED(fs.fs->openFile(std::addressof(file), "main.npdm", fs::OpenMode::Read))) {
+    if (NX_SUCCEEDED(fs.fs->openFile(std::addressof(file), "main.npdm", fs::OpenMode::Read))) {
         provider::UniqueProvider provider = std::make_unique<provider::FileProvider>(std::move(file));
         std::uint8_t key[0x100];
         if (GetNCAHeaderKey(provider, key)) {
@@ -357,8 +356,8 @@ auto NintendoContentArchiveFileSystem::verifyNPDMSignature(NCAFileSystem& fs) ->
     }
 }
 
-auto NintendoContentArchiveFileSystem::getAttributes(std::string_view path, fuse_wrapper::stat* stat) const -> Result {
-    if (stat == nullptr) {
+auto NintendoContentArchiveFileSystem::getAttributes(std::string_view path, fs::DirectoryEntry* entry) const -> Result {
+    if (entry == nullptr) {
         return INVALID;
     }
 
@@ -366,22 +365,20 @@ auto NintendoContentArchiveFileSystem::getAttributes(std::string_view path, fuse
     const auto name = fs::FirstComponent(path, std::addressof(subpath));
 
     if (name.empty()) {
-        fuse_wrapper::FillStat(*stat, mInitTime);
-        stat->st_mode |= S_IFDIR;
-        stat->st_nlink = 1;
+        entry->type = fs::Type::Directory;
+        entry->createTime = mInitTime;
         return SUCCESS;
     } else if (name == mName && subpath.empty()) {
-        fuse_wrapper::FillStat(*stat, mInitTime);
-        stat->st_mode |= S_IFREG;
-        stat->st_size = mProvider->getSize();
-        stat->st_nlink = 1;
+        entry->type = fs::Type::File;
+        entry->createTime = mInitTime;
+        entry->fileSize = mProvider->getSize();
         return SUCCESS;
     }
 
     for (const auto& fs : mFileSystems) {
         if (fs.fs != nullptr) {
             if (name == fs.name) {
-                return fs.fs->getAttributes(subpath, stat);
+                return fs.fs->getAttributes(subpath, entry);
             }
         }
     }
@@ -752,7 +749,7 @@ auto NintendoContentArchiveFileSystem::Directory::read(std::size_t* entryCount, 
             }
             entries[entriesRead].name = fs.name;
             entries[entriesRead].type = fs::Type::Directory;
-            entries[entriesRead].attributes = 0;
+            entries[entriesRead].createTime = 0;
             entries[entriesRead++].fileSize = 0;
             if (entriesRead >= maxEntries) {
                 break;
@@ -763,7 +760,7 @@ auto NintendoContentArchiveFileSystem::Directory::read(std::size_t* entryCount, 
     if (entriesRead < maxEntries && i >= offset) {
         entries[entriesRead].name = mParentFileSystem.mName;
         entries[entriesRead].type = fs::Type::File;
-        entries[entriesRead].attributes = 0;
+        entries[entriesRead].createTime = 0;
         entries[entriesRead++].fileSize = mParentFileSystem.mProvider->getSize();
     }
 

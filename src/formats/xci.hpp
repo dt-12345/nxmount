@@ -204,8 +204,8 @@ public:
         mFileSystem->destroy();
     }
 
-    auto getAttributes(std::string_view path, fuse_wrapper::stat* stat) const -> Result override {
-        return mFileSystem->getAttributes(path, stat);
+    auto getAttributes(std::string_view path, fs::DirectoryEntry* entry) const -> Result override {
+        return mFileSystem->getAttributes(path, entry);
     }
 
     auto access(std::string_view path, fs::OpenMode mode) const -> Result override {

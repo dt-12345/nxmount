@@ -122,11 +122,11 @@ auto PartitionFileSystemBase::tryParseTicket() const -> void {
 [[nodiscard]] static auto SearchContentMeta(const std::unique_ptr<fs::IFileSystem>& fs) -> provider::UniqueProvider {
     auto dir = fs->getRoot();
     fs::DirectoryEntry firstDir;
-    if (FAILED(dir->read(nullptr, std::addressof(firstDir), 1, 0))) {
+    if (NX_FAILED(dir->read(nullptr, std::addressof(firstDir), 1, 0))) {
         return nullptr;
     }
 
-    if (FAILED(fs->openDirectory(std::addressof(dir), firstDir.name))) {
+    if (NX_FAILED(fs->openDirectory(std::addressof(dir), firstDir.name))) {
         return nullptr;
     }
 
@@ -135,7 +135,7 @@ auto PartitionFileSystemBase::tryParseTicket() const -> void {
             std::string name;
             fmt::format_to(std::back_inserter(name), "{}/{}", firstDir.name, entry.name);
             std::unique_ptr<fs::IFile> file;
-            if (FAILED(fs->openFile(std::addressof(file), name, fs::OpenMode::Read))) {
+            if (NX_FAILED(fs->openFile(std::addressof(file), name, fs::OpenMode::Read))) {
                 return nullptr;
             }
             return std::make_unique<provider::FileProvider>(std::move(file));
@@ -185,7 +185,7 @@ auto PartitionFileSystemBase::rearrangeNCAs() -> void {
                     continue;
                 }
                 std::unique_ptr<fs::IFile> file;
-                if (FAILED(entry->fs->openFile(std::addressof(file), "0/control.nacp", fs::OpenMode::Read))) {
+                if (NX_FAILED(entry->fs->openFile(std::addressof(file), "0/control.nacp", fs::OpenMode::Read))) {
                     continue;
                 }
                 provider::UniqueProvider provider = std::make_unique<provider::FileProvider>(std::move(file));
@@ -297,8 +297,8 @@ auto PartitionFileSystemBase::destroy() -> void {
     }
 }
 
-auto PartitionFileSystemBase::getAttributes(std::string_view path, fuse_wrapper::stat* stat) const -> Result {
-    if (stat == nullptr) {
+auto PartitionFileSystemBase::getAttributes(std::string_view path, fs::DirectoryEntry* entry) const -> Result {
+    if (entry == nullptr) {
         return INVALID;
     }
 
@@ -306,29 +306,27 @@ auto PartitionFileSystemBase::getAttributes(std::string_view path, fuse_wrapper:
     const auto name = fs::FirstComponent(path, std::addressof(subpath));
 
     if (name == "/" || name.empty()) {
-        fuse_wrapper::FillStat(*stat, mInitTime);
-        stat->st_mode |= S_IFDIR;
-        stat->st_nlink = 1;
+        entry->type = fs::Type::Directory;
+        entry->createTime = mInitTime;
         return SUCCESS;
     }
 
-    const auto entry = getEntry(name);
-    if (entry == nullptr) {
+    const auto pfsEntry = getEntry(name);
+    if (pfsEntry == nullptr) {
         return NO_FILE;
     }
 
-    if (entry->fs == nullptr) {
+    if (pfsEntry->fs == nullptr) {
         // file
         if (!subpath.empty()) {
             return NO_FILE;
         }
-        fuse_wrapper::FillStat(*stat, mInitTime);
-        stat->st_mode |= S_IFREG;
-        stat->st_size = entry->size;
-        stat->st_nlink = 1;
+        entry->type = fs::Type::File;
+        entry->createTime = mInitTime;
+        entry->fileSize = pfsEntry->size;
     } else {
         // directory
-        return entry->fs->getAttributes(subpath, stat);
+        return pfsEntry->fs->getAttributes(subpath, entry);
     }
 
     return SUCCESS;
@@ -416,7 +414,7 @@ auto PartitionFileSystemBase::getContentMetaReader(std::uint64_t id, fs::IFileSy
         }
 
         std::unique_ptr<fs::IDirectory> metaDir;
-        if (FAILED(entry.fs->openDirectory(std::addressof(metaDir), "Meta/0"))) {
+        if (NX_FAILED(entry.fs->openDirectory(std::addressof(metaDir), "Meta/0"))) {
             continue;
         }
 
@@ -434,7 +432,7 @@ auto PartitionFileSystemBase::getContentMetaReader(std::uint64_t id, fs::IFileSy
         }
 
         std::unique_ptr<fs::IFile> cnmtFile;
-        if (FAILED(entry.fs->openFile(std::addressof(cnmtFile), cnmtPath, fs::OpenMode::Read))) {
+        if (NX_FAILED(entry.fs->openFile(std::addressof(cnmtFile), cnmtPath, fs::OpenMode::Read))) {
             continue;
         }
 
@@ -471,7 +469,7 @@ auto PartitionFileSystemBase::applyUpdate(std::unique_ptr<PartitionFileSystemBas
         }
 
         std::unique_ptr<fs::IDirectory> metaDir;
-        if (FAILED(entry.fs->openDirectory(std::addressof(metaDir), "Meta/0"))) {
+        if (NX_FAILED(entry.fs->openDirectory(std::addressof(metaDir), "Meta/0"))) {
             continue;
         }
 
@@ -489,7 +487,7 @@ auto PartitionFileSystemBase::applyUpdate(std::unique_ptr<PartitionFileSystemBas
         }
 
         std::unique_ptr<fs::IFile> cnmtFile;
-        if (FAILED(entry.fs->openFile(std::addressof(cnmtFile), cnmtPath, fs::OpenMode::Read))) {
+        if (NX_FAILED(entry.fs->openFile(std::addressof(cnmtFile), cnmtPath, fs::OpenMode::Read))) {
             continue;
         }
 
@@ -697,7 +695,7 @@ auto PartitionFileSystemBase::Directory::read(std::size_t* entryCount, fs::Direc
         }
         entries[current].name = entry.name;
         entries[current].type = entry.fs != nullptr ? fs::Type::Directory : fs::Type::File;
-        entries[current].attributes = 0;
+        entries[current].createTime = 0;
         entries[current++].fileSize = entry.size;
     }
 

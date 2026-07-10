@@ -9,6 +9,15 @@
 
 namespace nxmount::provider {
 
+auto AesCtrProvider::decrypt(void* dst, const void* src, std::size_t size, std::size_t offset) -> bool {
+    if (auto decryptor = mDecryptorPool.acquire()) {
+        decryptor->setIV(mIv, sizeof(mIv), offset);
+        return decryptor->decrypt(dst, src, size);
+    } else {
+        return crypto::AesCtrDecrypt(dst, src, size, mKey, sizeof(mKey), mIv, offset);
+    }
+}
+
 auto AesCtrProvider::read(void* dst, std::size_t size, std::size_t offset) -> std::size_t {
     if (offset >= getSize() || size == 0) {
         return 0;
@@ -25,7 +34,7 @@ auto AesCtrProvider::read(void* dst, std::size_t size, std::size_t offset) -> st
         return 0;
     }
 
-    if (crypto::AesCtrDecrypt(dst, buffer.get(), size, mKey, sizeof(mKey), mIv, offset)) {
+    if (decrypt(dst, buffer.get(), size, offset)) {
         if (size > readSize) {
             std::memset(static_cast<std::uint8_t*>(dst) + readSize, 0, size - readSize);
         }
@@ -34,6 +43,19 @@ auto AesCtrProvider::read(void* dst, std::size_t size, std::size_t offset) -> st
 
     LOG_WARNING("AES-CTR: Failed to decrypt region from {:#x} to {:#x}", offset, offset + size);
     return 0;
+}
+
+auto AesCtrExProvider::decrypt(void* dst, const void* src, std::size_t size, std::size_t offset, std::int32_t generation) -> bool {
+    formats::AesCtrUpperIv upperIv { .generation = static_cast<std::uint32_t>(generation), .secureValue = mSecureValue };
+    std::uint8_t iv[0x10];
+    MakeIv(iv, upperIv, offset);
+
+    if (auto decryptor = mDecryptorPool.acquire()) {
+        decryptor->setIV(iv, sizeof(iv), 0);
+        return decryptor->decrypt(dst, src, size);
+    } else {
+        return crypto::AesCtrDecrypt(dst, src, size, mKey, sizeof(mKey), iv, 0);
+    }
 }
 
 auto AesCtrExProvider::read(void* dst, std::size_t size, std::size_t offset) -> std::size_t {
@@ -102,11 +124,7 @@ auto AesCtrExProvider::read(void* dst, std::size_t size, std::size_t offset) -> 
 
         if (entry.encrypted == Entry::Encryption::Encrypted) {
             const auto ctrOffset = (mOffset + entry.offset + offsetInCurrentEntry) / cBlockSize;
-            formats::AesCtrUpperIv upperIv { .generation = static_cast<std::uint32_t>(entry.generation), .secureValue = mSecureValue };
-            std::uint8_t iv[0x10];
-            MakeIv(iv, upperIv, ctrOffset);
-
-            if (!crypto::AesCtrDecrypt(curDst, curSrc, sizeToCopy, mKey, sizeof(mKey), iv, 0)) {
+            if (!decrypt(curDst, curSrc, sizeToCopy, ctrOffset, entry.generation)) {
                 return 0;
             }
         }
@@ -334,11 +352,12 @@ HierarchicalIntegrityVerificationProvider::HierarchicalIntegrityVerificationProv
         throw std::runtime_error("HierarchicalIntegrityVerificationProvider");
     }
 
-    auto dataProvider = std::make_unique<SharedOffsetProvider>(provider, layerInfoOffset > 0 ? 0 : dataInfo.offset, dataInfo.size);
-    auto cacheDataProvider = std::make_unique<IntegrityVerificationProvider::DataProvider>(std::move(dataProvider), 1ull << dataInfo.blockOrder);
-    auto integrityProvider = std::make_unique<IntegrityVerificationProvider>(std::move(hashProvider), std::move(cacheDataProvider), dataInfo.blockOrder);
-    auto layerProvider = std::make_unique<LayerProvider>(std::move(integrityProvider), 1 << dataInfo.blockOrder);
-    mProvider = std::make_unique<CacheProvider<16, std::unique_ptr<LayerProvider>>>(std::move(layerProvider), 1ull << dataInfo.blockOrder);
+    // auto dataProvider = std::make_unique<SharedOffsetProvider>(provider, layerInfoOffset > 0 ? 0 : dataInfo.offset, dataInfo.size);
+    // auto cacheDataProvider = std::make_unique<IntegrityVerificationProvider::DataProvider>(std::move(dataProvider), 1ull << dataInfo.blockOrder);
+    // auto integrityProvider = std::make_unique<IntegrityVerificationProvider>(std::move(hashProvider), std::move(cacheDataProvider), dataInfo.blockOrder);
+    // auto layerProvider = std::make_unique<LayerProvider>(std::move(integrityProvider), 1 << dataInfo.blockOrder);
+    // mProvider = std::make_unique<CacheProvider<16, std::unique_ptr<LayerProvider>>>(std::move(layerProvider), 1ull << dataInfo.blockOrder);
+    mProvider = std::make_unique<SharedOffsetProvider>(provider, layerInfoOffset > 0 ? 0 : dataInfo.offset, dataInfo.size);
 }
 
 auto HierarchicalIntegrityVerificationProvider::read(void* dst, std::size_t size, std::size_t offset) -> std::size_t {

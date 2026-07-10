@@ -219,9 +219,9 @@ KeyManager KeyManager::sInstance = {};
 
 [[nodiscard]] static auto GetKeyFilePath(std::string_view path, const char* defaultFilename) -> std::filesystem::path {
     if (path.empty()) {
-        const char* home = getenv("HOME");
+        const char* home = ::getenv("HOME");
         if (home == nullptr) {
-            home = getenv("USERPROFILE");
+            home = ::getenv("USERPROFILE");
         }
         if (home == nullptr) {
             LOG_FATAL("No existing key file!");
@@ -489,9 +489,9 @@ static auto LoadTitleKeys(std::vector<TitleKey>& keys, const std::filesystem::pa
             if (const auto existing = FindKey(keys, rightsId); existing != nullptr) {
                 LOG_WARNING("Ignoring duplicate title in title.keys!");
             } else {
-                auto& key = keys.emplace_back();
-                std::memcpy(key.rightsId, rightsId, sizeof(key.rightsId));
-                std::memcpy(key.titleKey, titlekey, sizeof(key.titleKey));
+                auto& newKey = keys.emplace_back();
+                std::memcpy(newKey.rightsId, rightsId, sizeof(newKey.rightsId));
+                std::memcpy(newKey.titleKey, titlekey, sizeof(newKey.titleKey));
             }
         }
     }

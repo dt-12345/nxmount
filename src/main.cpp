@@ -1,5 +1,5 @@
 #include "driver/driver.hpp"
 
-int main(int argc, const char** argv) {
+auto main(int argc, const char** argv) -> int {
     return nxmount::driver::Run(argc, argv);
 }

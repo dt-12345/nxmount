@@ -12,8 +12,8 @@
 #define UNSUPPORTED -ENOTSUP
 #define SUCCESS 0
 
-#define SUCCEEDED(res) ((res) == SUCCESS)
-#define FAILED(res) (!SUCCEEDED(res))
+#define NX_SUCCEEDED(res) ((res) == SUCCESS)
+#define NX_FAILED(res) (!NX_SUCCEEDED(res))
 
 namespace nxmount {
 

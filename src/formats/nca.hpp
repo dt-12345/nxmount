@@ -291,7 +291,7 @@ public:
     auto init() -> void override {}
     auto destroy() -> void override {}
 
-    auto getAttributes(std::string_view path, fuse_wrapper::stat* stat) const -> Result override;
+    auto getAttributes(std::string_view path, fs::DirectoryEntry* entry) const -> Result override;
 
     auto access(std::string_view path, fs::OpenMode mode) const -> Result override;
 

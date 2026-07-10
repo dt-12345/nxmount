@@ -8,7 +8,7 @@ namespace nxmount::common {
 
 class MemMappedFile {
 public:
-    MemMappedFile() : mFileHandle(cNullHandle), mMapped(nullptr), mSize(0) {}
+    MemMappedFile() = default;
 
     explicit MemMappedFile(std::string_view path);
 
@@ -34,9 +34,9 @@ private:
     static constexpr const Handle cNullHandle = 0;
 #endif
 
-    Handle mFileHandle;
-    std::uint8_t* mMapped;
-    std::size_t mSize;
+    Handle mFileHandle = cNullHandle;
+    std::uint8_t* mMapped = nullptr;
+    std::size_t mSize = 0;
 };
 
 } // namespace nxmount::common

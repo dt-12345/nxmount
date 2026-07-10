@@ -2,6 +2,7 @@
 
 #include "common/errors.hpp"
 #include "common/string_map.hpp"
+#include "fs/directory.hpp"
 #include "fs/filesystem.hpp"
 
 #include <ctime>
@@ -22,8 +23,8 @@ public:
     auto init() -> void override {}
     auto destroy() -> void override {}
 
-    auto getAttributes(std::string_view path, fuse_wrapper::stat* stat) const -> Result override {
-        if (stat == nullptr) {
+    auto getAttributes(std::string_view path, DirectoryEntry* entry) const -> Result override {
+        if (entry == nullptr) {
             return INVALID;
         }
 
@@ -31,14 +32,12 @@ public:
         const auto name = FirstComponent(path, std::addressof(subpath));
 
         if (name.empty()) {
-            fuse_wrapper::FillStat(*stat, mInitTime);
-            stat->st_mode |= S_IFDIR;
-            stat->st_nlink = 1;
+            entry->type = Type::Directory;
             return SUCCESS;
         }
 
         if (const auto res = mFileSystems.find(name); res != mFileSystems.end()) {
-            return res->second->getAttributes(subpath, stat);
+            return res->second->getAttributes(subpath, entry);
         }
 
         return NO_FILE;
@@ -169,7 +168,7 @@ private:
                 }
                 entries[current].name = name;
                 entries[current].type = Type::Directory;
-                entries[current].attributes = 0;
+                entries[current].createTime = 0;
                 entries[current++].fileSize = 0;
             }
 

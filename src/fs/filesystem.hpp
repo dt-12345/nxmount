@@ -1,7 +1,9 @@
 #pragma once
 
 #include "common/errors.hpp"
+#if !defined(WIN32) || defined(USE_WINFUSE)
 #include "common/fuse.hpp"
+#endif
 #include "common/utils.hpp"
 #include "fs/directory.hpp"
 #include "fs/file.hpp"
@@ -46,7 +48,7 @@ public:
     virtual auto init() -> void = 0;
     virtual auto destroy() -> void = 0;
     
-    virtual auto getAttributes(std::string_view path, fuse_wrapper::stat* stat) const -> Result = 0;
+    virtual auto getAttributes(std::string_view path, DirectoryEntry* entry) const -> Result = 0;
 
     virtual auto createFile(std::unique_ptr<IFile>* out, std::string_view path, OpenMode mode) -> Result = 0;
     virtual auto deleteFile(std::string_view path) -> Result = 0;
@@ -54,7 +56,7 @@ public:
     virtual auto createDirectory(std::unique_ptr<IDirectory>* out, std::string_view path) -> Result = 0;
     virtual auto deleteDirectory(std::string_view path) -> Result = 0;
 
-    virtual auto stat(std::string_view path, fuse_wrapper::statvfs* statfs) const -> Result = 0;
+    // virtual auto stat(std::string_view path, fuse_wrapper::statvfs* statfs) const -> Result = 0;
     virtual auto access(std::string_view path, OpenMode mode) const -> Result = 0;
 
     virtual auto link(std::string_view path, std::string_view newpath) -> Result = 0;
@@ -68,7 +70,9 @@ public:
 
     virtual auto copyFileRange(std::string_view fromPath, std::size_t fromOffset, std::string_view toPath, std::size_t toOffset, std::size_t size) -> Result = 0;
 
+#if !defined(WIN32) || defined(USE_WINFUSE)
     static const fuse_operations cFuseOperations;
+#endif
 };
 
 class ReadOnlyFileSystemBase : public IFileSystem {
@@ -79,16 +83,16 @@ public:
     auto createDirectory(std::unique_ptr<IDirectory>*, std::string_view) -> Result override final { return READ_ONLY; }
     auto deleteDirectory(std::string_view) -> Result override final { return READ_ONLY; }
 
-    auto stat(std::string_view, fuse_wrapper::statvfs* statfs) const -> Result override /* not final */ {
-        if (statfs == nullptr) {
-            return INVALID;
-        }
-        std::memset(statfs, 0, sizeof(fuse_wrapper::statvfs));
-        // statfs->f_namemax = cMaxPath;
-        // statfs->f_bsize = 0x200;
-        statfs->f_flag |= R_OK;
-        return SUCCESS;
-    }
+    // auto stat(std::string_view, fuse_wrapper::statvfs* statfs) const -> Result override /* not final */ {
+    //     if (statfs == nullptr) {
+    //         return INVALID;
+    //     }
+    //     std::memset(statfs, 0, sizeof(fuse_wrapper::statvfs));
+    //     // statfs->f_namemax = cMaxPath;
+    //     // statfs->f_bsize = 0x200;
+    //     statfs->f_flag |= R_OK;
+    //     return SUCCESS;
+    // }
 
     auto link(std::string_view, std::string_view) -> Result override final { return READ_ONLY; }
     auto symLink(std::string_view, std::string_view) -> Result override final { return READ_ONLY; }

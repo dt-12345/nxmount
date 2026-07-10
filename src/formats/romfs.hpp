@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/cache.hpp"
 #include "fs/directory.hpp"
 #include "fs/filesystem.hpp"
 #include "provider/provider.hpp"
@@ -144,6 +145,8 @@ private:
 
     EntryMap<RomDirectoryEntry> mDirectoryMap;
     EntryMap<RomFileEntry> mFileMap;
+    mutable common::Cache<std::string, std::uint32_t, 0x20> mDirectoryCache;
+    mutable common::Cache<std::string, std::uint32_t, 0x200> mFileCache;
 };
 
 class RomFileSystem : public fs::ReadOnlyFileSystemBase {
@@ -157,7 +160,7 @@ public:
     auto init() -> void override {}
     auto destroy() -> void override {}
 
-    auto getAttributes(std::string_view path, fuse_wrapper::stat* stat) const -> Result override;
+    auto getAttributes(std::string_view path, fs::DirectoryEntry* entry) const -> Result override;
 
     auto access(std::string_view path, fs::OpenMode mode) const -> Result override;
 

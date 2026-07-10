@@ -1,5 +1,6 @@
 #pragma once
 
+#include "crypto/crypto.hpp"
 #include "formats/nca.hpp"
 #include "provider/cache_provider.hpp"
 #include "provider/provider.hpp"
@@ -30,8 +31,8 @@ public:
         }
         
         if constexpr (IsDynamicAlign()) {
-            auto block = std::vector<std::uint8_t>(getAlign());
-            return readImpl(dst, size, offset, block.data());
+            auto block = std::make_unique<std::uint8_t[]>(getAlign());
+            return readImpl(dst, size, offset, block.get());
         } else {
             std::uint8_t block[getAlign()];
             return readImpl(dst, size, offset, block);
@@ -117,6 +118,7 @@ public:
     AesCtrProvider(UniqueProvider provider, const std::uint8_t* key, const formats::AesCtrUpperIv& upperIv, std::size_t offset) : mProvider(std::move(provider)) {
         std::memcpy(mKey, key, sizeof(mKey));
         MakeIv(mIv, upperIv, offset / cBlockSize);
+        mDecryptorPool.initialize(mKey, sizeof(mKey), mIv);
     }
 
     ~AesCtrProvider() override = default;
@@ -126,7 +128,10 @@ public:
     auto read(void* dst, std::size_t size, std::size_t offset) -> std::size_t override;
 
 private:
+    auto decrypt(void* dst, const void* src, std::size_t size, std::size_t offset) -> bool;
+
     UniqueProvider mProvider;
+    crypto::DecryptorPool<crypto::AesCtrDecryptor, 8> mDecryptorPool;
     std::uint8_t mKey[cBlockSize];
     std::uint8_t mIv[cBlockSize];
 };
@@ -156,6 +161,11 @@ public:
         cNodeSize, cEntrySize, static_cast<std::int32_t>(entryCount), std::move(nodeProvider), std::move(entryProvider)
     ) {
         std::memcpy(mKey, key, sizeof(mKey));
+        // dummy iv for initialization
+        formats::AesCtrUpperIv upperIv { .generation = 0, .secureValue = mSecureValue };
+        std::uint8_t iv[0x10];
+        MakeIv(iv, upperIv, 0);
+        mDecryptorPool.initialize(mKey, sizeof(mKey), iv);
     }
 
     ~AesCtrExProvider() override = default;
@@ -167,7 +177,10 @@ public:
     auto read(void* dst, std::size_t size, std::size_t offset) -> std::size_t override;
 
 private:
+    auto decrypt(void* dst, const void* src, std::size_t size, std::size_t offset, std::int32_t generation) -> bool;
+
     UniqueProvider mProvider;
+    crypto::DecryptorPool<crypto::AesCtrDecryptor, 8> mDecryptorPool;
     std::uint8_t mKey[0x10];
     const std::uint32_t mSecureValue;
     const std::size_t mOffset;

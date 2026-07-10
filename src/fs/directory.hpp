@@ -12,7 +12,7 @@ namespace nxmount::fs {
 struct DirectoryEntry {
     std::string name = "";
     Type type = Type::Invalid;
-    std::uint32_t attributes = 0;
+    time_t createTime = 0;
     std::uint64_t fileSize = 0;
 };
 
@@ -47,7 +47,7 @@ public:
     private:
         auto readEntry() -> void {
             std::size_t read = 0;
-            if (FAILED(dir->read(std::addressof(read), std::addressof(entry), 1, offset)) || read != 1) {
+            if (NX_FAILED(dir->read(std::addressof(read), std::addressof(entry), 1, offset)) || read != 1) {
                 entry = {};
             }
         }

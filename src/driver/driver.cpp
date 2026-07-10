@@ -1,7 +1,6 @@
 #include "crypto/key_mgr.hpp"
 #include "crypto/key_utils.hpp"
 #include "driver/driver.hpp"
-#include "driver/driver_internal.hpp"
 #include "formats/hfs0.hpp"
 #include "formats/nca.hpp"
 #include "formats/pfs0.hpp"
@@ -16,14 +15,81 @@
 #include <string_view>
 #include <vector>
 
-#if defined(WIN32)
-    #if defined(USE_WINFUSE)
-        #include "driver/driver_fuse.cpp"
-    #else
-        #error "TODO"
-    #endif
+namespace nxmount::driver::detail {
+
+struct Config {
+    std::string mountPoint;
+    std::string_view basePath;
+    std::string_view keyPath;
+    std::string_view titlePath;
+    std::string_view intype;
+    std::string_view titlekey;
+    std::string_view updatePath;
+    std::vector<std::string_view> updates;
+    std::string_view updateType;
+#ifdef ENABLE_LOGGING
+    std::string_view logLevel;
+#endif
+    bool foreground = false;
+    bool debug = false;
+};
+
+auto RunImpl(const Config& config, std::unique_ptr<fs::IFileSystem> fs) -> std::int32_t;
+
+} // namespace nxmount::driver::detail
+
+#if defined(WIN32) && !defined(USE_WINFUSE)
+
+#include <winfsp/winfsp.h>
+
+namespace nxmount::driver::detail {
+
+static auto SvcStart(FSP_SERVICE* service, ULONG argc, PWSTR* argv) -> NTSTATUS {
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+static auto SvcStop(FSP_SERVICE* service) -> NTSTATUS {
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+auto RunImpl(const Config& config, std::unique_ptr<fs::IFileSystem> fs) -> std::int32_t {
+    return FspServiceRun(const_cast<wchar_t*>(L"nxmount"), SvcStart, SvcStop, nullptr);
+}
+
+} // namespace nxmount::driver::detail
+
 #else
-    #include "driver/driver_fuse.cpp"
+
+namespace nxmount::driver::detail {
+
+static auto ConfigToArgs(const Config& config) -> std::vector<const char*> {
+    auto args = std::vector<const char*>{
+        "nxmount", config.mountPoint.c_str(),
+#if !defined(WIN32)
+        "-o", "allow_other",
+#endif
+        "-o", "kernel_cache",
+    };
+
+    if (config.foreground) {
+        args.push_back("-f");
+    }
+
+    if (config.debug) {
+        args.push_back("-d");
+    }
+
+    return args;
+}
+
+auto RunImpl(const Config& config, std::unique_ptr<fs::IFileSystem> fs) -> std::int32_t {
+    const auto args = ConfigToArgs(config);
+
+    return fuse_main(static_cast<int>(args.size()), const_cast<char**>(args.data()), std::addressof(fs::IFileSystem::cFuseOperations), fs.release());
+}
+    
+} // namespace nxmount::driver::detail
+
 #endif
 
 namespace nxmount::driver {
@@ -94,8 +160,6 @@ enum class FileType {
     return logging::Logger::Warning;
 }
 #endif
-
-
 
 [[nodiscard]] static auto CreateFS(
     FileType type, const std::filesystem::path& path, provider::UniqueProvider provider, FileType* outType
