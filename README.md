@@ -30,7 +30,8 @@ Note that on Windows, Windows Defender causes a significant performance penalty 
 
 ## TODO:
 - Proper handling of add-on content
-- Support data patches and delta patches maybe?
+  - Data patches (I don't even know any games that use these)
+- Support applying delta patches (update to update patch)
 - Performance optimizations
   - Be smarter about what we cache and what we don't
   - Maybe increase verification + romfs lookup caches

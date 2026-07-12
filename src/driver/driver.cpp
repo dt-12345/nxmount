@@ -28,6 +28,8 @@ struct Config {
     std::string_view updatePath;
     std::vector<std::string_view> updates;
     std::string_view updateType;
+    std::vector<std::string_view> aocPaths;
+    std::string_view aocType;
 #ifdef ENABLE_LOGGING
     std::string_view logLevel;
 #endif
@@ -168,9 +170,7 @@ enum class FileType {
     }
 }
 
-static auto ApplyUpdate(
-    std::unique_ptr<fs::IFileSystem>& base, std::unique_ptr<fs::IFileSystem>& update, FileType baseType, FileType updateType
-) -> void {
+static auto ApplyUpdate(std::unique_ptr<fs::IFileSystem>& base, std::unique_ptr<fs::IFileSystem>& update, FileType baseType, FileType updateType) -> void {
     if (baseType == FileType::NCA && updateType == FileType::NCA) {
         // nca + nca
         auto baseFs = static_cast<formats::NintendoContentArchiveFileSystem*>(base.get());
@@ -195,6 +195,20 @@ static auto ApplyUpdate(
     }
 }
 
+static auto ApplyDLC(std::unique_ptr<fs::IFileSystem>& base, std::unique_ptr<fs::IFileSystem>& aoc, FileType baseType, FileType aocType) -> void {
+    if (IsArchiveType(baseType) && IsUpdateArchiveType(aocType)) {
+        formats::PartitionFileSystemBase* baseFs = GetPartitionFileSystem(base, baseType);
+        formats::PartitionFileSystemBase* aocFs = GetPartitionFileSystem(aoc, aocType);
+        if (baseFs != nullptr && aocFs != nullptr) {
+            baseFs->applyAddOnContent(std::unique_ptr<formats::PartitionFileSystemBase>(reinterpret_cast<formats::PartitionFileSystemBase*>(aoc.release())));
+        } else {
+            LOG_WARNING("Failed to resolve base and update filesystems");
+        }
+    } else {
+        LOG_WARNING("Unsupported combination of base + add-on content file types");
+    }
+}
+
 [[noreturn]] auto PrintUsage() -> void {
     fmt::print(
         "nxmount [options]\n"
@@ -207,6 +221,7 @@ static auto ApplyUpdate(
         "    --type, -t         input file type (nsp, pfs0, xci, hfs0, nca, auto)\n"
         "    --update-dir       path to a directory of update NSPs to apply to the base file\n"
         "    --update, -u       path to an update NSP to apply to the base file\n"
+        "    --aoc, -a          path to an add-on content (DLC) NSP to apply to the base file\n"
 #if defined(ENABLE_LOGGING)
         "    --log, -l          log level (info, warning, error, fatal)\n"
 #endif
@@ -281,6 +296,8 @@ static auto ApplyUpdate(
                 SET_VALUE(config->updatePath);
             } else if (MATCH_OPT("update", "u")) {
                 SET_VALUE(config->updates.emplace_back());
+            } else if (MATCH_OPT("aoc", "a")) {
+                SET_VALUE(config->aocPaths.emplace_back());
 #ifdef ENABLE_LOGGING
             } else if (MATCH_OPT("log", "l")) {
                 SET_VALUE(config->logLevel);
@@ -368,6 +385,24 @@ static auto ApplyUpdate(
                 LOG_INFO("Applying update {} to {}", updatePath, config->basePath);
                 ApplyUpdate(config->fs, update, realBaseType, realUpdateType);
             }
+        }
+    }
+
+    for (const auto aocPath : config->aocPaths) {
+        if (aocPath.empty()) {
+            continue;
+        }
+
+        LOG_INFO("Creating DLC {}", aocPath);
+
+        FileType aocType;
+        auto aoc = OpenFS(aocPath, "", std::addressof(aocType));
+        if (aoc == nullptr) {
+            LOG_ERROR("Failed to create DLC filesystem! {}", aocPath);
+        } else {
+            aoc->init();
+            LOG_INFO("Applying DLC {} to {}", aocPath, config->basePath);
+            ApplyDLC(config->fs, aoc, realBaseType, aocType);
         }
     }
 

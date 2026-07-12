@@ -637,6 +637,116 @@ auto PartitionFileSystemBase::applyUpdate(std::unique_ptr<PartitionFileSystemBas
     }
 }
 
+auto PartitionFileSystemBase::applyAddOnContent(std::unique_ptr<PartitionFileSystemBase> aoc) -> void {
+    bool applied = false;
+    // we assume that if there is metadata to be able to apply the patch, then we will have already rearranged the NCAs properly
+    auto entriesToAdd = std::vector<Entry>{};
+    for (auto& entry : aoc->mEntries) {
+        if (entry.name.empty() || entry.fs == nullptr) {
+            continue;
+        }
+
+        std::unique_ptr<fs::IDirectory> metaDir;
+        if (NX_FAILED(entry.fs->openDirectory(std::addressof(metaDir), "Meta/0"))) {
+            continue;
+        }
+
+        std::string cnmtPath = "";
+        for (const auto& dirEntry : *metaDir) {
+            if (dirEntry.type == fs::Type::Directory) {
+                continue;
+            }
+
+            cnmtPath = "Meta/0/" + dirEntry.name;
+        }
+
+        if (cnmtPath.empty()) {
+            continue;
+        }
+
+        std::unique_ptr<fs::IFile> cnmtFile;
+        if (NX_FAILED(entry.fs->openFile(std::addressof(cnmtFile), cnmtPath, fs::OpenMode::Read))) {
+            continue;
+        }
+
+        const auto reader = ContentMetaReader(std::make_unique<provider::FileProvider>(std::move(cnmtFile)));
+        if (!reader.isValid()) {
+            continue;
+        }
+
+        if (reader.getType() != ContentMetaType::AddOnContent) {
+            LOG_INFO("Skipping {} which is not add-on-content", cnmtPath);
+            continue;
+        }
+
+        const auto aocHeader = reader.getExtendedMetaHeader<AddOnContentMetaExtendedHeaderOld>();
+        if (aocHeader == nullptr) {
+            continue;
+        }
+
+        bool applicable = false;
+        for (const auto& contentEntry : mEntries) {
+            if (contentEntry.fs == nullptr || contentEntry.name.empty()) {
+                continue;
+            }
+
+            std::unique_ptr<fs::IDirectory> metaDir;
+            if (NX_FAILED(contentEntry.fs->openDirectory(std::addressof(metaDir), "Meta/0"))) {
+                continue;
+            }
+
+            std::string cnmtPath = "";
+            for (const auto& dirEntry : *metaDir) {
+                if (dirEntry.type == fs::Type::Directory) {
+                    continue;
+                }
+
+                cnmtPath = std::string("Meta/0/") + dirEntry.name;
+            }
+
+            if (cnmtPath.empty()) {
+                continue;
+            }
+
+            std::unique_ptr<fs::IFile> cnmtFile;
+            if (NX_FAILED(contentEntry.fs->openFile(std::addressof(cnmtFile), cnmtPath, fs::OpenMode::Read))) {
+                continue;
+            }
+
+            const auto baseReader = ContentMetaReader(std::make_unique<provider::FileProvider>(std::move(cnmtFile)));
+            if (!baseReader.isValid()) {
+                continue;
+            }
+
+            if (baseReader.getVersion() < aocHeader->requiredApplicationVersion) {
+                continue;
+            }
+
+            applicable = true;
+            break;
+        }
+        if (applicable) {
+            auto& aocEntry = mEntries.emplace_back();
+            aocEntry.name = std::move(entry.name);
+            aocEntry.fs = std::move(entry.fs);
+            aocEntry.size = 0;
+            aocEntry.offset = 0;
+            applied = true;
+        }
+    }
+
+    if (!applied) {
+        LOG_INFO("No applicable DLC found");
+    } else {
+        auto& entry = mEntries.emplace_back();
+        entry.fs = std::move(aoc);
+        entry.name = "";
+        entry.offset = 0;
+        entry.size = 0;
+        LOG_INFO("Applied DLC to {}", mName);
+    }
+}
+
 auto PartitionFileSystemBase::processEntry(Entry& entry, std::size_t index) -> bool {
     if (entry.name.ends_with(".nca")) {
         if (entry.fs == nullptr) {

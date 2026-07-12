@@ -69,6 +69,7 @@ public:
     auto openDirectory(std::unique_ptr<fs::IDirectory>* dir, std::string_view path) const -> Result override;
 
     auto applyUpdate(std::unique_ptr<PartitionFileSystemBase> update) -> void;
+    auto applyAddOnContent(std::unique_ptr<PartitionFileSystemBase> aoc) -> void;
 
 protected:
     virtual auto processEntry(Entry& entry, std::size_t index) -> bool;

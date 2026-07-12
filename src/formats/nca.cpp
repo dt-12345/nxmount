@@ -295,6 +295,8 @@ auto NintendoContentArchiveFileSystem::initializeFileSystems(NintendoContentArch
 
             switch (mHeader.header.contentType) {
                 case ContentType::Program:
+                case ContentType::Data:
+                case ContentType::PublicData:
                     if (NX_SUCCEEDED(mFileSystems[i].fs->access("main.npdm", fs::OpenMode::Read))) {
                         if (foundExefs) {
                             LOG_WARNING("Multiple exefs sections found!");
@@ -327,8 +329,6 @@ auto NintendoContentArchiveFileSystem::initializeFileSystems(NintendoContentArch
                 case ContentType::Meta:
                 case ContentType::Control:
                 case ContentType::Manual:
-                case ContentType::Data:
-                case ContentType::PublicData:
                     fmt::format_to(std::back_inserter(mFileSystems[i].name), "{}", i);
                     break;
                 default:
