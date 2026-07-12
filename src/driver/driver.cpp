@@ -15,9 +15,10 @@
 #include <string_view>
 #include <vector>
 
-namespace nxmount::driver::detail {
+namespace nxmount::driver {
 
 struct Config {
+    std::unique_ptr<fs::IFileSystem> fs;
     std::string mountPoint;
     std::string_view basePath;
     std::string_view keyPath;
@@ -33,66 +34,6 @@ struct Config {
     bool foreground = false;
     bool debug = false;
 };
-
-auto RunImpl(const Config& config, std::unique_ptr<fs::IFileSystem> fs) -> std::int32_t;
-
-} // namespace nxmount::driver::detail
-
-#if defined(WIN32) && !defined(USE_WINFUSE)
-
-#include <winfsp/winfsp.h>
-
-namespace nxmount::driver::detail {
-
-static auto SvcStart(FSP_SERVICE* service, ULONG argc, PWSTR* argv) -> NTSTATUS {
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-static auto SvcStop(FSP_SERVICE* service) -> NTSTATUS {
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-auto RunImpl(const Config& config, std::unique_ptr<fs::IFileSystem> fs) -> std::int32_t {
-    return FspServiceRun(const_cast<wchar_t*>(L"nxmount"), SvcStart, SvcStop, nullptr);
-}
-
-} // namespace nxmount::driver::detail
-
-#else
-
-namespace nxmount::driver::detail {
-
-static auto ConfigToArgs(const Config& config) -> std::vector<const char*> {
-    auto args = std::vector<const char*>{
-        "nxmount", config.mountPoint.c_str(),
-#if !defined(WIN32)
-        "-o", "allow_other",
-#endif
-        "-o", "kernel_cache",
-    };
-
-    if (config.foreground) {
-        args.push_back("-f");
-    }
-
-    if (config.debug) {
-        args.push_back("-d");
-    }
-
-    return args;
-}
-
-auto RunImpl(const Config& config, std::unique_ptr<fs::IFileSystem> fs) -> std::int32_t {
-    const auto args = ConfigToArgs(config);
-
-    return fuse_main(static_cast<int>(args.size()), const_cast<char**>(args.data()), std::addressof(fs::IFileSystem::cFuseOperations), fs.release());
-}
-    
-} // namespace nxmount::driver::detail
-
-#endif
-
-namespace nxmount::driver {
 
 enum class FileType {
     Auto,
@@ -266,20 +207,26 @@ static auto ApplyUpdate(
         "    --type, -t         input file type (nsp, pfs0, xci, hfs0, nca, auto)\n"
         "    --update-dir       path to a directory of update NSPs to apply to the base file\n"
         "    --update, -u       path to an update NSP to apply to the base file\n"
+#if defined(ENABLE_LOGGING)
         "    --log, -l          log level (info, warning, error, fatal)\n"
+#endif
         "    --help, -h         print help message (what you're reading right now)\n"
         "    --foreground, -f   run process in the foreground (i.e. do not daemonize)\n"
         "    --debug, -d        output driver debug logs\n"
     );
+#if !defined(WIN32) || defined(USE_WINFUSE)
     std::exit(0);
+#else
+    throw std::runtime_error("Arguments");
+#endif
 }
 
-auto Run(std::int32_t argc, const char* argv[]) -> std::int32_t {
+[[nodiscard]] static auto Setup(std::int32_t argc, const char* argv[]) -> std::unique_ptr<Config> {
     if (argc < 2) {
         PrintUsage();
     }
 
-    detail::Config config{};
+    auto config = std::make_unique<Config>();
 
     for (auto argp = argv + 1; argp < argv + argc; ++argp) {
         const auto arg = std::string_view(*argp);
@@ -319,31 +266,31 @@ auto Run(std::int32_t argc, const char* argv[]) -> std::int32_t {
                     (DEST) = value;         \
                 }
             if (MATCH_OPT("mount", "m")) {
-                SET_VALUE(config.mountPoint);
+                SET_VALUE(config->mountPoint);
             } else if (MATCH_OPT("base", "b")) {
-                SET_VALUE(config.basePath);
+                SET_VALUE(config->basePath);
             } else if (MATCH_OPT("keys", "k")) {
-                SET_VALUE(config.keyPath);
+                SET_VALUE(config->keyPath);
             } else if (MATCH_LONG_OPT("titlekeys")) {
-                SET_VALUE(config.titlePath);
+                SET_VALUE(config->titlePath);
             } else if (MATCH_LONG_OPT("titlekey")) {
-                SET_VALUE(config.titlekey);
+                SET_VALUE(config->titlekey);
             } else if (MATCH_OPT("type", "t")) {
-                SET_VALUE(config.intype);
+                SET_VALUE(config->intype);
             } else if (MATCH_LONG_OPT("update-dir")) {
-                SET_VALUE(config.updatePath);
+                SET_VALUE(config->updatePath);
             } else if (MATCH_OPT("update", "u")) {
-                SET_VALUE(config.updates.emplace_back());
+                SET_VALUE(config->updates.emplace_back());
 #ifdef ENABLE_LOGGING
             } else if (MATCH_OPT("log", "l")) {
-                SET_VALUE(config.logLevel);
+                SET_VALUE(config->logLevel);
 #endif
             } else if (MATCH_OPT("help", "h")) {
                 PrintUsage();
             } else if (MATCH_OPT("foreground", "f")) {
-                config.foreground = true;
+                config->foreground = true;
             } else if (MATCH_OPT("debug", "d")) {
-                config.debug = true;
+                config->debug = true;
             }
             #undef MATCH_OPT
             #undef SET_VALUE
@@ -352,36 +299,36 @@ auto Run(std::int32_t argc, const char* argv[]) -> std::int32_t {
         }
     }
 
-    if (config.mountPoint.empty() || config.basePath.empty()) {
+    if (config->mountPoint.empty() || config->basePath.empty()) {
         fmt::println("Please provide a mount point and base file path with --mount and --base");
         PrintUsage();
     }
 
 #ifdef ENABLE_LOGGING
-    if (!config.logLevel.empty()) {
-        logging::Logger::SetLogLevel(ParseLogLevel(config.logLevel));
+    if (!config->logLevel.empty()) {
+        logging::Logger::SetLogLevel(ParseLogLevel(config->logLevel));
     } else {
         logging::Logger::SetLogLevel(logging::Logger::Warning);
     }
 #endif
 
-    if (!config.titlekey.empty()) {
+    if (!config->titlekey.empty()) {
         std::uint8_t key[0x10];
-        crypto::ParseKey(key, sizeof(key), config.titlekey);
+        crypto::ParseKey(key, sizeof(key), config->titlekey);
         LOG_INFO("Using titlekey {}", key);
         crypto::KeyManager::instance()->setExternalTitleKey(key);
     }
 
-    crypto::KeyManager::instance()->initialize(config.keyPath, config.titlePath);
+    crypto::KeyManager::instance()->initialize(config->keyPath, config->titlePath);
 
     FileType realBaseType;
-    auto base = OpenFS(config.basePath, config.intype, std::addressof(realBaseType));
-    if (base == nullptr) {
-        LOG_FATAL("Failed to create base filesystem! {}", config.basePath);
+    config->fs = OpenFS(config->basePath, config->intype, std::addressof(realBaseType));
+    if (config->fs == nullptr) {
+        LOG_FATAL("Failed to create base filesystem! {}", config->basePath);
     }
-    base->init();
+    config->fs->init();
 
-    for (const auto updatePath : config.updates) {
+    for (const auto updatePath : config->updates) {
         if (updatePath.empty()) {
             continue;
         }
@@ -389,18 +336,18 @@ auto Run(std::int32_t argc, const char* argv[]) -> std::int32_t {
         LOG_INFO("Creating update {}", updatePath);
 
         FileType realUpdateType;
-        auto update = OpenFS(updatePath, config.updateType, std::addressof(realUpdateType));
+        auto update = OpenFS(updatePath, config->updateType, std::addressof(realUpdateType));
         if (update == nullptr) {
             LOG_ERROR("Failed to create update filesystem! {}", updatePath);
         } else {
             update->init();
-            LOG_INFO("Applying update {} to {}", updatePath, config.basePath);
-            ApplyUpdate(base, update, realBaseType, realUpdateType);
+            LOG_INFO("Applying update {} to {}", updatePath, config->basePath);
+            ApplyUpdate(config->fs, update, realBaseType, realUpdateType);
         }
     }
 
-    if (!config.updatePath.empty()) {
-        for (const auto& entry : std::filesystem::directory_iterator(config.updatePath)) {
+    if (!config->updatePath.empty()) {
+        for (const auto& entry : std::filesystem::directory_iterator(config->updatePath)) {
             if (!entry.is_regular_file()) {
                 continue;
             }
@@ -413,18 +360,180 @@ auto Run(std::int32_t argc, const char* argv[]) -> std::int32_t {
 
             const auto updatePath = entry.path().string();
             FileType realUpdateType;
-            auto update = OpenFS(updatePath, config.updateType, std::addressof(realUpdateType));
+            auto update = OpenFS(updatePath, config->updateType, std::addressof(realUpdateType));
             if (update == nullptr) {
                 LOG_ERROR("Failed to create update filesystem! {}", updatePath);
             } else {
                 update->init();
-                LOG_INFO("Applying update {} to {}", updatePath, config.basePath);
-                ApplyUpdate(base, update, realBaseType, realUpdateType);
+                LOG_INFO("Applying update {} to {}", updatePath, config->basePath);
+                ApplyUpdate(config->fs, update, realBaseType, realUpdateType);
             }
         }
     }
 
-    return detail::RunImpl(config, std::move(base));
+    return config;
 }
 
 } // namespace nxmount::driver
+
+#if defined(WIN32) && !defined(USE_WINFUSE)
+
+#include "common/unicode.hpp"
+
+#include <winfsp/winfsp.h>
+#include <windows.h>
+
+#include <chrono>
+#include <stdexcept>
+
+namespace nxmount::driver {
+
+static auto SvcStart(FSP_SERVICE* service, ULONG argc, PWSTR* argv) -> NTSTATUS {
+    auto converted = std::vector<std::string>(argc);
+    auto args = std::vector<const char*>(argc);
+    for (ULONG i = 0; i < argc; ++i) {
+        converted[i] = common::Utf16ToUtf8(argv[i]);
+        args[i] = converted[i].c_str();
+    }
+
+    std::unique_ptr<Config> config;
+    try {
+        config = Setup(static_cast<std::int32_t>(args.size()), args.data());
+    } catch (const std::runtime_error& e) {
+        using namespace std::literals::string_view_literals;
+        if (e.what() == "Arguments"sv) {
+            LOG_INFO("Arguments are not appropriate for starting the service");
+        } else {
+            LOG_ERROR("Failed to setup driver");
+        }
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    using namespace std::chrono;
+
+    FSP_FSCTL_VOLUME_PARAMS volumeParams;
+    std::memset(std::addressof(volumeParams), 0, sizeof(volumeParams));
+    volumeParams.Version = sizeof(FSP_FSCTL_VOLUME_PARAMS);
+    volumeParams.SectorSize = 0x200;
+    volumeParams.SectorsPerAllocationUnit = 1;
+    volumeParams.VolumeCreationTime = system_clock::to_time_t(system_clock::now());
+    volumeParams.VolumeSerialNumber = 0;
+    volumeParams.FileInfoTimeout = -1;
+    volumeParams.CaseSensitiveSearch = 1;
+    volumeParams.CasePreservedNames = 1;
+    volumeParams.UnicodeOnDisk = 1;
+    volumeParams.PersistentAcls = 1;
+    volumeParams.ReparsePoints = 0;
+    volumeParams.ReadOnlyVolume = 1;
+    volumeParams.PostCleanupWhenModifiedOnly = 1;
+    volumeParams.UmFileContextIsUserContext2 = 1;
+    volumeParams.AllowOpenInKernelMode = 1;
+    std::memcpy(volumeParams.FileSystemName, L"nxmount", sizeof(L"nxmount") - sizeof(wchar_t));
+
+    auto fsHandle = std::make_unique<fs::IFileSystem::FsHandle>();
+    fsHandle->fs = std::move(config->fs);
+
+    const auto createRes = FspFileSystemCreate(
+        const_cast<wchar_t*>(L"" FSP_FSCTL_DISK_DEVICE_NAME),
+        std::addressof(volumeParams),
+        std::addressof(fs::IFileSystem::cFspInterface),
+        std::addressof(fsHandle->fspFs)
+    );
+
+    if (!NT_SUCCESS(createRes)) {
+        LOG_ERROR("Failed to create filesystem proxy! {:#x}", createRes);
+        return createRes;
+    }
+
+    const auto mountPoint = common::Utf8ToUtf16(config->mountPoint);
+    if (mountPoint.empty()) {
+        LOG_ERROR("Invalid mount point!");
+        return STATUS_OBJECT_NAME_INVALID;
+    }
+
+    const auto mountRes = FspFileSystemSetMountPoint(
+        fsHandle->fspFs,
+        const_cast<wchar_t*>(mountPoint.c_str())
+    );
+
+    if (!NT_SUCCESS(mountRes)) {
+        LOG_ERROR("Failed to mount filesystem to {}! {:#x}", config->mountPoint, mountRes);
+        return mountRes;
+    }
+
+    if (config->debug) {
+        auto stderrHandle = GetStdHandle(STD_ERROR_HANDLE);
+        if (stderrHandle != INVALID_HANDLE_VALUE) {
+            FspDebugLogSetHandle(stderrHandle);
+        }
+        FspFileSystemSetDebugLog(fsHandle->fspFs, -1);
+    } else {
+        FspFileSystemSetDebugLog(fsHandle->fspFs, 0);
+    }
+
+    service->UserContext = fsHandle.get();
+    if (const auto res = FspFileSystemStartDispatcher(fsHandle->fspFs, 0); !NT_SUCCESS(res)) {
+        return res;
+    }
+
+    auto handle = fsHandle.release();
+    handle->fspFs->UserContext = handle;
+    
+    return STATUS_SUCCESS;
+}
+
+static auto SvcStop(FSP_SERVICE* service) -> NTSTATUS {
+    auto handle = static_cast<fs::IFileSystem::FsHandle*>(service->UserContext);
+
+    if (handle->fspFs != nullptr) {
+        FspFileSystemStopDispatcher(handle->fspFs);
+    }
+
+    if (handle->fs != nullptr) {
+        handle->fs->destroy();
+        handle->fs.reset();
+    }
+
+    return STATUS_SUCCESS;
+}
+
+auto Run(std::int32_t /* argc */, const char* /* argv */ []) -> std::int32_t {
+    return FspServiceRun(const_cast<wchar_t*>(L"nxmount"), SvcStart, SvcStop, nullptr);
+}
+
+} // namespace nxmount::driver
+
+#else
+
+namespace nxmount::driver {
+
+static auto ConfigToArgs(const Config& config) -> std::vector<const char*> {
+    auto args = std::vector<const char*>{
+        "nxmount", config.mountPoint.c_str(),
+#if !defined(WIN32)
+        "-o", "allow_other",
+#endif
+        "-o", "kernel_cache",
+    };
+
+    if (config.foreground) {
+        args.push_back("-f");
+    }
+
+    if (config.debug) {
+        args.push_back("-d");
+    }
+
+    return args;
+}
+
+auto Run(std::int32_t argc, const char* argv[]) -> std::int32_t {
+    const auto config = Setup(argc, argv);
+    const auto args = ConfigToArgs(*config);
+
+    return fuse_main(static_cast<int>(args.size()), const_cast<char**>(args.data()), std::addressof(fs::IFileSystem::cFuseOperations), config->fs.release());
+}
+    
+} // namespace nxmount::driver
+
+#endif

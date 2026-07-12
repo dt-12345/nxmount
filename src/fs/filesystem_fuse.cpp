@@ -68,8 +68,8 @@ namespace nxmount::fs {
     return stat;
 }
 
-[[nodiscard]] ALWAYS_INLINE static auto GetFs() -> fs::IFileSystem* {
-    return reinterpret_cast<fs::IFileSystem*>(fuse_get_context()->private_data);
+[[nodiscard]] ALWAYS_INLINE static auto GetFs() -> IFileSystem* {
+    return reinterpret_cast<IFileSystem*>(fuse_get_context()->private_data);
 }
 
 #define LOG_RETURN(EXPR)        \
@@ -251,9 +251,9 @@ static auto ReadDir(const char* path, void* buf, fuse_fill_dir_t filler, fuse_wr
     }
 
     {
-        fs::DirectoryEntry thisEntry{
+        DirectoryEntry thisEntry{
             .name = std::string(dir->getName()),
-            .type = fs::Type::Directory,
+            .type = Type::Directory,
             .createTime = 0,
             .fileSize = 0,
         };
@@ -318,9 +318,11 @@ static auto Init(fuse_conn_info* conn, fuse_config*) -> void* {
 
 static auto Destroy(void* data) -> void {
     LOG_INFO("Destroy");
-    auto fs = reinterpret_cast<fs::IFileSystem*>(data);
-    fs->destroy();
-    fs->~IFileSystem();
+    auto fs = reinterpret_cast<IFileSystem*>(data);
+    if (fs != nullptr) {
+        fs->destroy();
+        fs->~IFileSystem();
+    }
 }
 
 static auto Access(const char* path, int mask) -> int {

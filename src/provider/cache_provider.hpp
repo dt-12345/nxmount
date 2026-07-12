@@ -15,7 +15,7 @@ public:
     static constexpr const std::size_t cMaxBlockSize = 0x10000;
 
     CacheProvider(ProviderT provider, std::size_t blockSize, std::size_t cacheSize)
-     : mProvider(std::move(provider)), mBlockSize(std::min(blockSize, cMaxBlockSize)), mCacheSize(std::max(cacheSize, 1ull)) {}
+     : mProvider(std::move(provider)), mBlockSize((std::min)(blockSize, cMaxBlockSize)), mCacheSize((std::max)(cacheSize, std::size_t(1))) {}
 
     ~CacheProvider() override = default;
 
@@ -28,14 +28,14 @@ public:
 
         std::unique_ptr<std::uint8_t[]> work = nullptr;
         auto buf = static_cast<std::uint8_t*>(dst);
-        const auto readSize = std::min(size, getSize() - offset);
+        const auto readSize = (std::min)(size, getSize() - offset);
         auto remaining = readSize;
         auto current = offset;
 
         const auto alignedHead = common::AlignDown(offset, mBlockSize);
         if (alignedHead != current) {
             const auto headOffset = current - alignedHead;
-            const auto headSize = std::min(readSize, mBlockSize - headOffset);
+            const auto headSize = (std::min)(readSize, mBlockSize - headOffset);
             if (tryReadFromCache(buf, headOffset, headSize, alignedHead / mBlockSize)) {
                 /* good */
             } else {

@@ -3,6 +3,7 @@
 #include "crypto/crypto.hpp"
 #include "crypto/key_mgr.hpp"
 #include "crypto/key_utils.hpp"
+#include "fs/path.hpp"
 #include "provider/atmosphere.hpp"
 #include "formats/nca.hpp"
 #include "formats/npdm.hpp"
@@ -89,7 +90,7 @@ NintendoContentArchiveFileSystem::NintendoContentArchiveFileSystem(provider::Sha
         }
     }
 
-    const auto keyGen = std::max(VerifyKeyGeneration(mHeader.header.keyGenerationOld), VerifyKeyGeneration(mHeader.header.keyGeneration));
+    const auto keyGen = (std::max)(VerifyKeyGeneration(mHeader.header.keyGenerationOld), VerifyKeyGeneration(mHeader.header.keyGeneration));
 
     if (crypto::IsNull(mHeader.header.rightsId)) {
         const auto& key = keyMgr->getKeySet().key_area_keys[keyGen][VerifyKeyIndex(mHeader.header.keyAreaEncryptionKeyIndex)];
@@ -364,7 +365,7 @@ auto NintendoContentArchiveFileSystem::getAttributes(std::string_view path, fs::
     std::string_view subpath;
     const auto name = fs::FirstComponent(path, std::addressof(subpath));
 
-    if (name.empty()) {
+    if (name.empty() || fs::IsPathSeparator(name[0])) {
         entry->type = fs::Type::Directory;
         entry->createTime = mInitTime;
         return SUCCESS;
@@ -443,7 +444,7 @@ auto NintendoContentArchiveFileSystem::openDirectory(std::unique_ptr<fs::IDirect
 
     std::string_view subpath;
     const auto name = fs::FirstComponent(path, std::addressof(subpath));
-    if (name.empty()) {
+    if (name.empty() || fs::IsPathSeparator(name[0])) {
         *dir = getRoot();
         return SUCCESS;
     }
@@ -605,8 +606,8 @@ auto NintendoContentArchiveFileSystem::createAesCtrExProvider(
         header.patchInfo.aesCtrExHeader.entryCount, std::move(nodeProvider), std::move(entryProvider)
     );
 
-    const auto blockSize = std::min(aesCtrExProvider->getSize(), std::size_t(0x1000));
-    const auto cacheSize = std::min(32ull, (aesCtrExProvider->getSize() + blockSize - 1) / blockSize);
+    const auto blockSize = (std::min)(aesCtrExProvider->getSize(), std::size_t(0x1000));
+    const auto cacheSize = (std::min)(std::size_t(32), (aesCtrExProvider->getSize() + blockSize - 1) / blockSize);
     auto cacheProvider = std::make_unique<provider::CacheProvider<>>(std::move(aesCtrExProvider), blockSize, cacheSize);
 
     return std::make_unique<provider::AlignedProvider<provider::AesCtrExProvider::cBlockSize>>(std::move(cacheProvider));
@@ -615,8 +616,8 @@ auto NintendoContentArchiveFileSystem::createAesCtrExProvider(
 auto NintendoContentArchiveFileSystem::createAesCtrProvider(provider::UniqueProvider provider, const AesCtrUpperIv& upperIv, std::size_t offset) const -> provider::UniqueProvider {
     auto aesCtrProvider = std::make_unique<provider::AesCtrProvider>(std::move(provider), getDecryptionKey(DecryptionKey_AesCtr), upperIv, offset);
 
-    const auto blockSize = common::AlignUp(std::min(aesCtrProvider->getSize(), std::size_t(0x800)), provider::AesCtrProvider::cBlockSize);
-    const auto cacheSize = std::min(16ull, (aesCtrProvider->getSize() + blockSize - 1) / blockSize);
+    const auto blockSize = common::AlignUp((std::min)(aesCtrProvider->getSize(), std::size_t(0x800)), provider::AesCtrProvider::cBlockSize);
+    const auto cacheSize = (std::min)(std::size_t(16), (aesCtrProvider->getSize() + blockSize - 1) / blockSize);
     auto cacheProvider = std::make_unique<provider::CacheProvider<>>(std::move(aesCtrProvider), blockSize, cacheSize);
 
     return std::make_unique<provider::AlignedProvider<provider::AesCtrProvider::cBlockSize>>(std::move(cacheProvider));
@@ -688,7 +689,7 @@ auto NintendoContentArchiveFileSystem::createIndirectProvider(
 auto NintendoContentArchiveFileSystem::createSha256Provider(provider::UniqueProvider provider, const HashData::HierarchicalSha256HashData& hashData) const -> provider::UniqueProvider {
     auto shaProvider = std::make_unique<provider::Sha256Provider>(std::move(provider), hashData);
 
-    const auto cacheSize = std::min(32ull, (shaProvider->getSize() + hashData.blockSize - 1) / hashData.blockSize);
+    const auto cacheSize = (std::min)(std::size_t(32), (shaProvider->getSize() + hashData.blockSize - 1) / hashData.blockSize);
     auto cacheProvider = std::make_unique<provider::CacheProvider<>>(std::move(shaProvider), hashData.blockSize, cacheSize);
 
     return std::make_unique<provider::AlignedProvider<provider::DYNAMIC>>(std::move(cacheProvider), hashData.blockSize);

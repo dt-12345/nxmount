@@ -3,6 +3,8 @@
 #include "common/errors.hpp"
 #if !defined(WIN32) || defined(USE_WINFUSE)
 #include "common/fuse.hpp"
+#else
+#include <winfsp/winfsp.h>
 #endif
 #include "common/utils.hpp"
 #include "fs/directory.hpp"
@@ -72,6 +74,13 @@ public:
 
 #if !defined(WIN32) || defined(USE_WINFUSE)
     static const fuse_operations cFuseOperations;
+#else
+    static const FSP_FILE_SYSTEM_INTERFACE cFspInterface;
+
+    struct FsHandle {
+        std::unique_ptr<IFileSystem> fs;
+        FSP_FILE_SYSTEM* fspFs;
+    };
 #endif
 };
 

@@ -26,6 +26,29 @@ public:
 
     virtual auto sync(bool flushMetadata) -> Result = 0;
 
+    using EntryCallback = bool (const DirectoryEntry& entry, void* userdata);
+    virtual auto forEachEntry(EntryCallback cb, void* userdata, std::string_view marker) const -> void {
+        if (marker.empty()) {
+            for (const auto& entry : *this) {
+                if (!cb(entry, userdata)) {
+                    return;
+                }
+            }
+        } else {
+            bool found = false;
+            for (const auto& entry : *this) {
+                if (found) {
+                    if (!cb(entry, userdata)) {
+                        return;
+                    }
+                } else {
+                    found = entry.name == marker;
+                }
+            }
+        }
+        return;
+    }
+
     struct iterator {
         using iterator_category = std::forward_iterator_tag;
         using difference_type = std::ptrdiff_t;

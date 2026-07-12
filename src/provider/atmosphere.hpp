@@ -3,7 +3,6 @@
 #include "common/cache.hpp"
 #include "crypto/crypto.hpp"
 #include "formats/nca.hpp"
-#include "provider/cache_provider.hpp"
 #include "provider/provider.hpp"
 
 #include <fmt/base.h>
@@ -68,7 +67,7 @@ private:
             }
 
             const auto headOffset = getAlign() - headSize;
-            const auto readSize = std::min(size, headSize);
+            const auto readSize = (std::min)(size, headSize);
             std::memcpy(buf, std::addressof(block[headOffset]), readSize);
             buf += readSize;
             remaining -= readSize;
@@ -91,7 +90,7 @@ private:
                 if (mProvider->read(block, getAlign(), currentOffset) != getAlign()) {
                     return 0;
                 }
-                std::memcpy(buf, block, std::min(getAlign(), remaining));
+                std::memcpy(buf, block, (std::min)(getAlign(), remaining));
                 break;
             }
         }
@@ -132,7 +131,7 @@ private:
     auto decrypt(void* dst, const void* src, std::size_t size, std::size_t offset) -> bool;
 
     UniqueProvider mProvider;
-    crypto::DecryptorPool<crypto::AesCtrDecryptor, 8> mDecryptorPool;
+    crypto::DecryptorPool<crypto::AesCtrDecryptor, 4> mDecryptorPool;
     std::uint8_t mKey[cBlockSize];
     std::uint8_t mIv[cBlockSize];
 };
@@ -172,7 +171,7 @@ public:
     ~AesCtrExProvider() override = default;
 
     auto getSize() const -> std::size_t override {
-        return static_cast<std::size_t>(std::max(mBucketTree.getEndAddress(), std::int64_t(0)));
+        return static_cast<std::size_t>((std::max)(mBucketTree.getEndAddress(), std::int64_t(0)));
     }
 
     auto read(void* dst, std::size_t size, std::size_t offset) -> std::size_t override;
@@ -181,7 +180,7 @@ private:
     auto decrypt(void* dst, const void* src, std::size_t size, std::size_t offset, std::int32_t generation) -> bool;
 
     UniqueProvider mProvider;
-    crypto::DecryptorPool<crypto::AesCtrDecryptor, 8> mDecryptorPool;
+    crypto::DecryptorPool<crypto::AesCtrDecryptor, 4> mDecryptorPool;
     std::uint8_t mKey[0x10];
     const std::uint32_t mSecureValue;
     const std::size_t mOffset;
@@ -265,7 +264,7 @@ public:
     ~IndirectProvider() override = default;
 
     auto getSize() const -> std::size_t override {
-        return static_cast<std::size_t>(std::max(mBucketTree.getEndAddress(), std::int64_t(0)));
+        return static_cast<std::size_t>((std::max)(mBucketTree.getEndAddress(), std::int64_t(0)));
     }
 
     auto read(void* dst, std::size_t size, std::size_t offset) -> std::size_t override;

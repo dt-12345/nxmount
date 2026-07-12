@@ -42,14 +42,14 @@ ALWAYS_INLINE constexpr auto Unused(Ts&&... args) -> void {
         return static_cast<EnumType>(std::to_underlying(lhs) | std::to_underlying(rhs));                    \
     }                                                                                                       \
                                                                                                             \
-    constexpr inline auto operator|=(EnumType lhs, EnumType rhs) -> EnumType {                              \
-        return lhs = static_cast<EnumType>(std::to_underlying(lhs) | std::to_underlying(rhs));              \
+    constexpr inline auto operator|=(EnumType& lhs, EnumType rhs) -> EnumType& {                            \
+        return lhs = lhs | rhs;                                                                             \
     }                                                                                                       \
                                                                                                             \
     constexpr inline auto operator&(EnumType lhs, EnumType rhs) -> EnumType {                               \
         return static_cast<EnumType>(std::to_underlying(lhs) & std::to_underlying(rhs));                    \
     }                                                                                                       \
                                                                                                             \
-    constexpr inline auto operator&=(EnumType lhs, EnumType rhs) -> EnumType {                              \
-        return lhs = static_cast<EnumType>(std::to_underlying(lhs) & std::to_underlying(rhs));              \
+    constexpr inline auto operator&=(EnumType& lhs, EnumType rhs) -> EnumType& {                            \
+        return lhs = lhs & rhs;                                                                             \
     }

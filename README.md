@@ -21,14 +21,18 @@ mkdir ~/Game
 nxmount --base MyGame.nsp --update GameUpdate.nsp --mount ~/Game
 ```
 
-## TODO:
+Note that on Windows, Windows Defender causes a significant performance penalty if active on the mounted drive.
 
-- Figure out why performance is so bad with WinFuse when FUSE on Linux works just fine
+## TODO:
 - Proper handling of add-on content
 - Support data patches and delta patches maybe?
 - Performance optimizations
-  - Linux FUSE version is ~1.5x slower than native FS (at least in WSL)
-- Convert WinFuse version into a background service
+  - Be smarter about what we cache and what we don't
+  - Maybe increase verification + romfs lookup caches
+  - Also figure out why the WinFsp driver runs worse than the WinFsp FUSE driver (surely it's not just because MSVC is that much worse...)
+- Convert WinFsp FUSE version into a background service
   - Currently runs in the foreground regardless of the CLI option because only the CygWin version supports daemonization
-- WinFsp driver (maybe this will fix the Windows performance)
+- Register WinFsp version as a service
+  - WinFsp provides a relatively straightforward way to do this
 - Memory usage is too high for such a simple project
+- Refactor error handling to use std::expected maybe?

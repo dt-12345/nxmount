@@ -96,7 +96,7 @@ public:
             return false;
         }
 
-        const auto size = std::min(static_cast<std::size_t>(out->auxSize), nameBufSize - 1);
+        const auto size = (std::min)(static_cast<std::size_t>(out->auxSize), nameBufSize - 1);
         if (mEntryProvider->read(name, size, pos + sizeof(*out)) != size) {
             return false;
         }
@@ -129,7 +129,9 @@ public:
     );
 
     auto findFile(RomFileInfo* out, std::string_view path) const -> bool;
+    auto findFile(EntryMap<RomFileEntry>::Entry* out, std::string_view path) const -> bool;
     auto findDirectory(RomDirectoryInfo* out, std::string_view path) const -> bool;
+    auto findDirectory(EntryMap<RomDirectoryEntry>::Entry* out, std::string_view path) const -> bool;
     auto getFile(RomFileInfo* out, std::uint32_t pos, std::uint32_t* next = nullptr) const -> bool;
     auto getFile(RomFileInfo* out, char* name, std::size_t maxSize, std::uint32_t pos, std::uint32_t* next = nullptr) const -> bool;
     auto getDirectory(RomDirectoryInfo* out, std::uint32_t pos, std::uint32_t* next = nullptr) const -> bool;
@@ -220,6 +222,8 @@ private:
         auto read(std::size_t* entryCount, fs::DirectoryEntry* entries, std::size_t maxEntries, std::size_t offset) const -> Result override {
             return readImpl(entryCount, entries, maxEntries, offset);
         }
+
+        auto forEachEntry(EntryCallback cb, void* userdata, std::string_view marker) const -> void override;
 
     private:
         [[nodiscard]] auto readImpl(std::size_t* entryCount, fs::DirectoryEntry* entries, std::size_t maxEntries, std::size_t offset) const -> Result;

@@ -304,9 +304,6 @@ public:
     [[nodiscard]] auto getContentType() const -> ContentType { return mHeader.header.contentType; }
     [[nodiscard]] auto getRightsId() const -> const std::uint8_t(&)[0x10] { return mHeader.header.rightsId; }
 
-    auto setIdOffset(std::uint8_t offset) -> void { mIdOffset = offset; }
-    [[nodiscard]] auto getIdOffset() const -> std::uint8_t { return mIdOffset; }
-
     auto setBase(NintendoContentArchiveFileSystem& baseNCA) -> void;
 
 private:
@@ -345,7 +342,6 @@ private:
     time_t mInitTime;
     EncryptedHeaderRegion mHeader;
     NCAVersion mVersion;
-    std::uint8_t mIdOffset = 0xff;
 
     // file representing the raw encrypted NCA (TODO: should this give you a view of the unencrypted NCA?)
     class NCAFile final : public fs::ReadOnlyFileBase {

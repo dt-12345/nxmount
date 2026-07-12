@@ -242,8 +242,6 @@ auto PartitionFileSystemBase::rearrangeNCAs() -> void {
             if (entry == nullptr) {
                 continue;
             }
-            auto ncaFs = static_cast<NintendoContentArchiveFileSystem*>(entry->fs.get());
-            ncaFs->setIdOffset(info.idOffset);
             entry->name.clear();
             const auto typeName = ToString(info.contentType);
             if (wrapper->contains(typeName)) {
@@ -305,7 +303,7 @@ auto PartitionFileSystemBase::getAttributes(std::string_view path, fs::Directory
     std::string_view subpath;
     const auto name = fs::FirstComponent(path, std::addressof(subpath));
 
-    if (name == "/" || name.empty()) {
+    if (name.empty() || fs::IsPathSeparator(name[0])) {
         entry->type = fs::Type::Directory;
         entry->createTime = mInitTime;
         return SUCCESS;

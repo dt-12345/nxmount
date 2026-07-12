@@ -12,7 +12,7 @@ public:
     explicit OffsetProvider(ProviderT provider, std::size_t offset, std::size_t size = cAutoSize) :
         mProvider(std::move(provider)),
         mOffset(offset >= mProvider->getSize() ? mProvider->getSize() : offset),
-        mSize(size == cAutoSize ? mProvider->getSize() - mOffset : std::min(size, mProvider->getSize() - mOffset)) {}
+        mSize(size == cAutoSize ? mProvider->getSize() - mOffset : (std::min)(size, mProvider->getSize() - mOffset)) {}
 
     ~OffsetProvider() override = default;
 

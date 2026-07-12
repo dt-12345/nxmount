@@ -6,11 +6,15 @@ namespace nxmount::fs {
 
 inline constexpr const std::size_t cMaxPath = 0x300;
 
+[[nodiscard]] inline auto IsPathSeparator(char c) -> bool {
+    return c == '/' || c == '\\';
+}
+
 [[nodiscard]] inline auto Normalize(std::string_view path) -> std::string_view {
     if (path.empty()) {
         return path;
     }
-    if (path[0] == '/') {
+    if (IsPathSeparator(path[0])) {
         return { path.data() + 1, path.size() - 1 };
     }
     return path;
@@ -24,7 +28,7 @@ inline constexpr const std::size_t cMaxPath = 0x300;
 */
 [[nodiscard]] inline auto FirstComponent(std::string_view path, std::string_view* remaining = nullptr) -> std::string_view {
     path = Normalize(path);
-    const auto pos = path.find_first_of("/");
+    const auto pos = path.find_first_of("/\\");
     if (pos == std::string_view::npos) {
         if (remaining != nullptr) {
             *remaining = "";
@@ -38,10 +42,10 @@ inline constexpr const std::size_t cMaxPath = 0x300;
 }
 
 [[nodiscard]] inline auto LastComponent(std::string_view path) -> std::string_view {
-    if (path.ends_with("/")) {
+    if (path.ends_with("/\\")) {
         path = { path.data(), path.size() - 1 };
     }
-    const auto pos = path.find_last_of("/");
+    const auto pos = path.find_last_of("/\\");
     if (pos == std::string_view::npos) {
         return path;
     }

@@ -1,6 +1,7 @@
 #include "crypto/crypto.hpp"
 #include "provider/atmosphere.hpp"
 #include "log/logging.hpp"
+#include "provider/cache_provider.hpp"
 #include "provider/memory_stream_provider.hpp"
 #include "provider/offset_provider.hpp"
 #include "provider/provider.hpp"
@@ -120,7 +121,7 @@ auto AesCtrExProvider::read(void* dst, std::size_t size, std::size_t offset) -> 
 
         const auto offsetInCurrentEntry = curOffset - entry.offset;
         const auto sizeOfCurrentEntry = (nextOffset - entry.offset) - offsetInCurrentEntry;
-        const auto sizeToCopy = std::min(sizeOfCurrentEntry, end - curOffset);
+        const auto sizeToCopy = (std::min)(sizeOfCurrentEntry, end - curOffset);
 
         if (entry.encrypted == Entry::Encryption::Encrypted) {
             const auto ctrOffset = (mOffset + entry.offset + offsetInCurrentEntry) / cBlockSize;
@@ -193,7 +194,7 @@ auto Sha256Provider::read(void* dst, std::size_t size, std::size_t offset) -> st
         return 0;
     }
 
-    const auto readSize = std::min(getSize() - offset, size);
+    const auto readSize = (std::min)(getSize() - offset, size);
     if (mProvider->read(dst, readSize, offset) != readSize) {
         return 0;
     }
@@ -201,7 +202,7 @@ auto Sha256Provider::read(void* dst, std::size_t size, std::size_t offset) -> st
     auto current = offset;
     auto remaining = readSize;
     while (remaining > 0) {
-        const auto blockSize = std::min(mBlockSize, remaining);
+        const auto blockSize = (std::min)(mBlockSize, remaining);
         const auto hashOffset = current / mDataToHashRatio;
         if (!IsHashNull<cHashSize>(std::addressof(mHashRegion[hashOffset]))) {
             if (!crypto::Sha256Verify(static_cast<const std::uint8_t*>(dst) + current - offset, blockSize, std::addressof(mHashRegion[hashOffset]))) {
@@ -262,11 +263,11 @@ auto IntegrityVerificationProvider::read(void* dst, std::size_t size, std::size_
     }
 
     const auto count = size >> mBlockOrder;
-    const auto capacity = std::min(cMaxHashCount, count);
+    const auto capacity = (std::min)(cMaxHashCount, count);
     auto hashBuf = std::vector<std::uint8_t>(cHashSize * capacity);
     std::size_t current = 0, remaining = count;
     while (current < count) {
-        const auto hashCount = std::min(capacity, remaining);
+        const auto hashCount = (std::min)(capacity, remaining);
         const auto hashOffset = ((offset + (current << mBlockOrder)) >> mBlockOrder) * cHashSize;
         const auto hashSize = hashCount * cHashSize;
         if (mVerifyCache.get(hashOffset)) {
@@ -340,7 +341,7 @@ HierarchicalIntegrityVerificationProvider::HierarchicalIntegrityVerificationProv
         }
 
         const auto blockSize = 1 << info.blockOrder;
-        const auto cacheSize = std::min(8ull, static_cast<std::size_t>((info.size + blockSize - 1) / blockSize));
+        const auto cacheSize = (std::min)(std::size_t(8), static_cast<std::size_t>((info.size + blockSize - 1) / blockSize));
         lastCacheSize = cacheSize;
 
         auto dataProvider = std::make_unique<SharedOffsetProvider>(provider, layerInfoOffset + info.offset, info.size);
@@ -425,7 +426,7 @@ auto IndirectProvider::read(void* dst, std::size_t size, std::size_t offset) -> 
 
         const auto offsetInCurrentEntry = curOffset - entry.virtualOffset;
         const auto sizeOfCurrentEntry = (nextOffset - entry.virtualOffset) - offsetInCurrentEntry;
-        const auto sizeToRead = std::min(sizeOfCurrentEntry, end - curOffset);
+        const auto sizeToRead = (std::min)(sizeOfCurrentEntry, end - curOffset);
 
         const auto maxSize = mProviders[entry.storageIndex]->getSize();
         if (entry.physicalOffset < 0 || entry.physicalOffset >= static_cast<std::int64_t>(maxSize)) {

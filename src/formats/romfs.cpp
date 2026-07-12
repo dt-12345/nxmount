@@ -1,8 +1,10 @@
 #include "formats/romfs.hpp"
 #include "common/errors.hpp"
+#include "fs/directory.hpp"
 #include "fs/path.hpp"
 #include "log/logging.hpp"
 #include "provider/memory_stream_provider.hpp"
+#include "provider/offset_provider.hpp"
 #include "provider/provider.hpp"
 
 #include <stdexcept>
@@ -91,6 +93,30 @@ auto RomFileTable::findFile(RomFileInfo* out, std::string_view path) const -> bo
     return true;
 }
 
+auto RomFileTable::findFile(EntryMap<RomFileEntry>::Entry* out, std::string_view path) const -> bool {
+    if (out == nullptr) {
+        return false;
+    }
+
+    std::uint32_t pos = 0xffff'ffffu;
+    if (!mFileCache.get(path, std::addressof(pos))) {
+        pos = findRecursive(path, 0, false);
+        if (pos == 0xffff'ffffu) {
+            return false;
+        } else {
+            mFileCache.add(path, pos);
+        }
+    }
+
+    EntryMap<RomFileEntry>::Entry entry;
+    if (!mFileMap.get(std::addressof(entry), pos)) {
+        return false;
+    }
+
+    *out = entry;
+    return true;
+}
+
 auto RomFileTable::findDirectory(RomDirectoryInfo* out, std::string_view path) const -> bool {
     if (out == nullptr) {
         return false;
@@ -113,6 +139,30 @@ auto RomFileTable::findDirectory(RomDirectoryInfo* out, std::string_view path) c
 
     out->nextDir = entry.value.dir;
     out->nextFile = entry.value.file;
+    return true;
+}
+
+auto RomFileTable::findDirectory(EntryMap<RomDirectoryEntry>::Entry* out, std::string_view path) const -> bool {
+    if (out == nullptr) {
+        return false;
+    }
+
+    std::uint32_t pos = 0xffff'ffffu;
+    if (!mDirectoryCache.get(path, std::addressof(pos))) {
+        pos = findRecursive(path, 0, true);
+        if (pos == 0xffff'ffffu) {
+            return false;
+        } else {
+            mDirectoryCache.add(path, pos);
+        }
+    }
+
+    EntryMap<RomDirectoryEntry>::Entry entry;
+    if (!mDirectoryMap.get(std::addressof(entry), pos)) {
+        return false;
+    }
+
+    *out = entry;
     return true;
 }
 
@@ -282,6 +332,14 @@ RomFileSystem::RomFileSystem(provider::UniqueProvider provider) : mProvider(std:
         throw std::runtime_error("RomFileSystem");
     }
 
+    // auto makeProvider = [](provider::SharedProvider& provider, std::size_t size, std::size_t offset) -> provider::UniqueProvider {
+    //     if (size > 0x80'0000) {
+    //         return std::make_unique<provider::SharedOffsetProvider>(provider, offset, size);
+    //     } else {
+    //         return std::make_unique<provider::MemoryStreamProvider>(*provider, size, offset);
+    //     }
+    // };
+
     auto dirBucketProvider = std::make_unique<provider::MemoryStreamProvider>(*mProvider, header.directoryBucketSize, header.directoryBucketOffset);
     auto dirEntryProvider = std::make_unique<provider::MemoryStreamProvider>(*mProvider, header.directoryEntrySize, header.directoryEntryOffset);
     auto fileBucketProvider = std::make_unique<provider::MemoryStreamProvider>(*mProvider, header.fileBucketSize, header.fileBucketOffset);
@@ -303,7 +361,7 @@ auto RomFileSystem::getAttributes(std::string_view path, fs::DirectoryEntry* ent
         return INVALID;
     }
 
-    if (path.empty() || path == "/") {
+    if (path.empty() || fs::IsPathSeparator(path[0])) {
         entry->type = fs::Type::Directory;
         entry->createTime = mInitTime;
         return SUCCESS;
@@ -327,7 +385,7 @@ auto RomFileSystem::getAttributes(std::string_view path, fs::DirectoryEntry* ent
 }
 
 auto RomFileSystem::access(std::string_view path, fs::OpenMode mode) const -> Result {
-    if (path.empty() || path == "/") {
+    if (path.empty() || fs::IsPathSeparator(path[0])) {
         if (mode != fs::OpenMode::Read) {
             return PERMISSION_ERROR;
         }
@@ -363,7 +421,7 @@ auto RomFileSystem::openFile(std::unique_ptr<fs::IFile>* out, std::string_view p
         return PERMISSION_ERROR;
     }
 
-    *out = std::make_unique<File>(*this, fileInfo, fs::LastComponent(path));
+    *out = std::make_unique<File>(*this, fileInfo, path);
     return SUCCESS;
 }
 
@@ -372,7 +430,7 @@ auto RomFileSystem::openDirectory(std::unique_ptr<fs::IDirectory>* dir, std::str
         return INVALID;
     }
 
-    if (path.empty() || path == "/") {
+    if (path.empty() || fs::IsPathSeparator(path[0])) {
         *dir = getRoot();
         return SUCCESS;
     }
@@ -382,7 +440,7 @@ auto RomFileSystem::openDirectory(std::unique_ptr<fs::IDirectory>* dir, std::str
         return NO_FILE;
     }
 
-    *dir = std::make_unique<Directory>(*this, dirInfo, fs::LastComponent(path));
+    *dir = std::make_unique<Directory>(*this, dirInfo, path);
     return SUCCESS;
 }
 
@@ -436,7 +494,7 @@ auto RomFileSystem::Directory::readImpl(std::size_t* entryCount, fs::DirectoryEn
             entries[currentEntry].name = name;
             entries[currentEntry].type = fs::Type::File;
             entries[currentEntry].createTime = mParentFileSystem.mInitTime;
-            entries[currentEntry++].fileSize = static_cast<std::size_t>(std::max(info.size, std::int64_t(0)));
+            entries[currentEntry++].fileSize = static_cast<std::size_t>((std::max)(info.size, std::int64_t(0)));
         }
     }
 
@@ -445,6 +503,71 @@ auto RomFileSystem::Directory::readImpl(std::size_t* entryCount, fs::DirectoryEn
     }
 
     return SUCCESS;
+}
+
+auto RomFileSystem::Directory::forEachEntry(EntryCallback cb, void* userdata, std::string_view marker) const -> void {
+    std::uint32_t dirPos;
+    bool seekedToMarker = marker.empty();
+    if (seekedToMarker || mRootDir == 0xffff'ffffu) {
+        dirPos = mRootDir;
+    } else {
+        EntryMap<RomDirectoryEntry>::Entry info{};
+        std::string fullPath = mName;
+        fmt::format_to(std::back_inserter(fullPath), "/{}", marker);
+        if (!mParentFileSystem.mFileTable->findDirectory(std::addressof(info), fullPath)) {
+            dirPos = 0xffff'ffffu;
+        } else {
+            dirPos = info.value.next;
+            seekedToMarker = true;
+        }
+    }
+    while (dirPos != 0xffff'ffffu) {
+        RomDirectoryInfo info{};
+        fs::DirectoryEntry entry;
+        char name[fs::cMaxPath + 1];
+        if (!mParentFileSystem.mFileTable->getDirectory(std::addressof(info), name, fs::cMaxPath, dirPos, std::addressof(dirPos))) {
+            return;
+        }
+        name[fs::cMaxPath] = '\0';
+        entry.name = name;
+        entry.type = fs::Type::Directory;
+        entry.createTime = mParentFileSystem.mInitTime;
+        entry.fileSize = 0;
+        if (!cb(entry, userdata)) {
+            return;
+        }
+    }
+
+    std::uint32_t filePos;
+    if (seekedToMarker || mRootFile == 0xffff'ffffu) {
+        filePos = mRootFile;
+    } else {
+        EntryMap<RomFileEntry>::Entry info{};
+        std::string fullPath = mName;
+        fmt::format_to(std::back_inserter(fullPath), "/{}", marker);
+        if (!mParentFileSystem.mFileTable->findFile(std::addressof(info), fullPath)) {
+            filePos = 0xffff'ffffu;
+        } else {
+            filePos = info.value.next;
+            seekedToMarker = true;
+        }
+    }
+    while (filePos != 0xffff'ffffu) {
+        RomFileInfo info{};
+        fs::DirectoryEntry entry;
+        char name[fs::cMaxPath + 1];
+        if (!mParentFileSystem.mFileTable->getFile(std::addressof(info), name, fs::cMaxPath, filePos, std::addressof(filePos))) {
+            return;
+        }
+        name[fs::cMaxPath] = '\0';
+        entry.name = name;
+        entry.type = fs::Type::File;
+        entry.createTime = mParentFileSystem.mInitTime;
+        entry.fileSize = static_cast<std::size_t>((std::max)(info.size, std::int64_t(0)));
+        if (!cb(entry, userdata)) {
+            return;
+        }
+    }
 }
 
 } // namespace nxmount::formats
