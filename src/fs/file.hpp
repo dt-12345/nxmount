@@ -11,7 +11,7 @@ class IFile : public INode {
 public:
     [[nodiscard]] auto getType() const -> Type override { return Type::File; }
 
-    virtual ~IFile() = default;
+    ~IFile() override = default;
 
     virtual auto read(void* dst, std::size_t size, std::size_t offset) const -> std::size_t = 0;
     virtual auto write(const void* src, std::size_t size, std::size_t offset) -> std::size_t = 0;

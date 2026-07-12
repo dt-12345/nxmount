@@ -32,24 +32,27 @@ auto GetDisplayName(provider::UniqueProvider& provider) -> std::string {
         stream.next_out = reinterpret_cast<Bytef*>(titleBlock.data());
         stream.avail_out = titleBlock.size() * sizeof(ApplicationTitle);
 
-        if (inflateInit2(&stream, -15) != Z_OK) {
-            LOG_ERROR("Failed to initialize z_stream for ApplicationControlProperty title block decompression!");
+        if (const auto res = inflateInit2(&stream, -15); res != Z_OK) {
+            LOG_ERROR("Failed to initialize z_stream for ApplicationControlProperty title block decompression! {} ({})", res, stream.msg != nullptr ? stream.msg : "<null>");
             return "";
         }
 
-        if (inflate(&stream, Z_FINISH) != Z_OK) {
-            LOG_ERROR("Failed to decompress ApplicationControlProperty title block!");
+        if (const auto res = inflate(&stream, Z_FINISH); res != Z_STREAM_END) {
+            LOG_ERROR("Failed to decompress ApplicationControlProperty title block! {} ({})", res, stream.msg != nullptr ? stream.msg : "<null>");
             inflateEnd(&stream);
             return "";
         }
 
-        if (inflateEnd(&stream) != Z_OK) {
-            LOG_ERROR("Failed to finalize z_stream for ApplicationControlProperty title block decompression!");
+        if (const auto res = inflateEnd(&stream); res != Z_OK) {
+            LOG_ERROR("Failed to finalize z_stream for ApplicationControlProperty title block decompression! {} ({})", res, stream.msg != nullptr ? stream.msg : "<null>");
             return "";
         }
 
         for (const auto& title : titleBlock) {
-            name = title.name;
+            if (title.name[0]) {
+                name = title.name;
+                break;
+            }
         }
     }
 

@@ -5,8 +5,6 @@
 #include "formats/nca.hpp"
 #include "provider/provider.hpp"
 
-#include <fmt/base.h>
-
 #include <bit>
 
 namespace nxmount::provider {

@@ -1,5 +1,4 @@
 #include "common/errors.hpp"
-#include "common/fuse.hpp"
 #include "common/utils.hpp"
 #include "fs/filesystem.hpp"
 #include "fs/directory.hpp"

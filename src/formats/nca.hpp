@@ -11,6 +11,10 @@
 #include <array>
 #include <ctime>
 
+#if defined(_MSC_VER)
+#pragma warning(disable : 4201) // nameless struct/union
+#endif
+
 namespace nxmount::formats {
 
 inline constexpr const std::size_t cSectorSize = 0x200;
@@ -391,3 +395,7 @@ private:
 };
 
 } // namespace nxmount::formats
+
+#if defined(_MSC_VER)
+#pragma warning(default : 4201) // nameless struct/union
+#endif

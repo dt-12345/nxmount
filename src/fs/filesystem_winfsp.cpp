@@ -3,8 +3,8 @@
 
 #include <sddl.h>
 
+#include <chrono>
 #include <climits>
-#include <ctime>
 #include <cwchar>
 #include <vector>
 
@@ -14,9 +14,9 @@ struct SD {
 	PSECURITY_DESCRIPTOR sd = nullptr;
 	ULONG size = 0;
 
-	SD() {
-		if (ConvertStringSecurityDescriptorToSecurityDescriptorW(
-			L"O:BAG:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;WD)", // TODO: I just copied this from the WinFsp example
+	SD(const wchar_t* sddlString) {
+		if (::ConvertStringSecurityDescriptorToSecurityDescriptorW(
+			sddlString,
 			SDDL_REVISION_1,
 			std::addressof(sd),
 			std::addressof(size)
@@ -27,14 +27,19 @@ struct SD {
 
 	~SD() {
 		if (sd != nullptr) {
-			LocalFree(sd);
+			::LocalFree(sd);
 			sd = nullptr;
 		}
 		size = 0;
 	}
 };
 
-static auto cSD = SD();
+/*
+	Owner: System Built-In Administrators
+	Group: System Built-In Administrators
+	DACL: SE_DACL_PROTECTED, (Local System File Access All), (Built-In Administrators File Access All) (Everyone File Access All)
+*/
+static const SD cSD = L"O:BAG:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;WD)";
 
 [[nodiscard]] ALWAYS_INLINE static auto GetFs(FSP_FILE_SYSTEM* fileSystem) -> IFileSystem* {
 	return static_cast<IFileSystem::FsHandle*>(fileSystem->UserContext)->fs.get();
@@ -52,6 +57,9 @@ static auto cSD = SD();
 	if (access & FILE_GENERIC_WRITE & ~(SYNCHRONIZE | READ_CONTROL)) {
 		out |= OpenMode::Write;
 	}
+	if (access & FILE_EXECUTE) {
+		out |= OpenMode::Execute;
+	}
 	return out;
 }
 
@@ -61,7 +69,7 @@ static auto GetVolumeInfo(FSP_FILE_SYSTEM* fileSystem, FSP_FSCTL_VOLUME_INFO* vo
 	try {
 		const auto label = common::Utf8ToUtf16(fs->getRoot()->getName());
 		::wcscpy_s(volumeInfo->VolumeLabel, sizeof(volumeInfo->VolumeLabel) / sizeof(wchar_t), label.c_str());
-	} catch (const std::runtime_error& e) {
+	} catch (const std::runtime_error&) {
 		/* ... */
 	}
 	volumeInfo->TotalSize = 0;
@@ -111,10 +119,10 @@ static auto Create(FSP_FILE_SYSTEM* fileSystem, PWSTR fileName, UINT32 createOpt
 		fileInfo->ReparseTag = 0;
 		fileInfo->AllocationSize = common::AlignUp(fileInfo->FileSize, 0x200);
 		fileInfo->FileSize = 0;
-		fileInfo->CreationTime = time(nullptr);
-		fileInfo->LastAccessTime = time(nullptr);
-		fileInfo->LastWriteTime = time(nullptr);
-		fileInfo->ChangeTime = time(nullptr);
+		fileInfo->CreationTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+		fileInfo->LastAccessTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+		fileInfo->LastWriteTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+		fileInfo->ChangeTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
 		fileInfo->IndexNumber = 0;
 		fileInfo->HardLinks = 0;
 		fileInfo->EaSize = 0;
@@ -132,10 +140,10 @@ static auto Create(FSP_FILE_SYSTEM* fileSystem, PWSTR fileName, UINT32 createOpt
 		fileInfo->ReparseTag = 0;
 		fileInfo->AllocationSize = common::AlignUp(fileInfo->FileSize, 0x200);
 		fileInfo->FileSize = file->getSize();
-		fileInfo->CreationTime = time(nullptr);
-		fileInfo->LastAccessTime = time(nullptr);
-		fileInfo->LastWriteTime = time(nullptr);
-		fileInfo->ChangeTime = time(nullptr);
+		fileInfo->CreationTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+		fileInfo->LastAccessTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+		fileInfo->LastWriteTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+		fileInfo->ChangeTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
 		fileInfo->IndexNumber = 0;
 		fileInfo->HardLinks = 0;
 		fileInfo->EaSize = 0;
@@ -145,7 +153,7 @@ static auto Create(FSP_FILE_SYSTEM* fileSystem, PWSTR fileName, UINT32 createOpt
 	}
 }
 
-static auto Open(FSP_FILE_SYSTEM* fileSystem, PWSTR fileName, UINT32 createOptions, UINT32 grantedAccess, PVOID* fileContext, FSP_FSCTL_FILE_INFO* fileInfo) -> NTSTATUS {
+static auto Open(FSP_FILE_SYSTEM* fileSystem, PWSTR fileName, UINT32, UINT32 grantedAccess, PVOID* fileContext, FSP_FSCTL_FILE_INFO* fileInfo) -> NTSTATUS {
 	auto fs = GetFs(fileSystem);
 	const auto path = NormalizePath(fileName);
 
@@ -165,7 +173,7 @@ static auto Open(FSP_FILE_SYSTEM* fileSystem, PWSTR fileName, UINT32 createOptio
 
 		fileInfo->FileAttributes = FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY;
 		fileInfo->CreationTime = entry.createTime;
-		fileInfo->LastAccessTime = time(nullptr);
+		fileInfo->LastAccessTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
 		fileInfo->LastWriteTime = entry.createTime;
 		fileInfo->ChangeTime = entry.createTime;
 
@@ -180,7 +188,7 @@ static auto Open(FSP_FILE_SYSTEM* fileSystem, PWSTR fileName, UINT32 createOptio
 		fileInfo->FileAttributes = FILE_ATTRIBUTE_READONLY;
 		fileInfo->FileSize = entry.fileSize;
 		fileInfo->CreationTime = entry.createTime;
-		fileInfo->LastAccessTime = time(nullptr);
+		fileInfo->LastAccessTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
 		fileInfo->LastWriteTime = entry.createTime;
 		fileInfo->ChangeTime = entry.createTime;
 
@@ -208,7 +216,7 @@ static auto Read(FSP_FILE_SYSTEM*, PVOID fileContext, PVOID buffer, UINT64 offse
 	auto file = static_cast<IFile*>(fileContext);
 
 	const auto size = file->read(buffer, length, offset);
-	*bytesTransferred = size;
+	*bytesTransferred = static_cast<ULONG>(size);
 	return size != 0 ? STATUS_SUCCESS : STATUS_END_OF_FILE;
 }
 
@@ -217,17 +225,18 @@ static auto Write(FSP_FILE_SYSTEM*, PVOID fileContext, PVOID buffer, UINT64 offs
 
 	auto file = static_cast<IFile*>(fileContext);
 	
+	std::size_t len = static_cast<std::size_t>(length);
 	if (constrainedIo) {
 		const auto fileSize = file->getSize();
 		if (offset >= fileSize) {
 			return STATUS_SUCCESS;
 		}
-		if (offset + length > fileSize) {
-			length = fileSize - offset;
+		if (offset + len > fileSize) {
+			len = fileSize - offset;
 		}
 	}
 
-	*bytesTransferred = file->write(buffer, length, offset);
+	*bytesTransferred = static_cast<ULONG>(file->write(buffer, len, offset));
 	return STATUS_SUCCESS;
 }
 
@@ -245,10 +254,10 @@ static auto Flush(FSP_FILE_SYSTEM*, PVOID fileContext, FSP_FSCTL_FILE_INFO* file
 	}
 	fileInfo->ReparseTag = 0;
 	fileInfo->AllocationSize = common::AlignUp(fileInfo->FileSize, 0x200);
-	fileInfo->CreationTime = time(nullptr);
-	fileInfo->LastAccessTime = time(nullptr);
-	fileInfo->LastWriteTime = time(nullptr);
-	fileInfo->ChangeTime = time(nullptr);
+	fileInfo->CreationTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+	fileInfo->LastAccessTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+	fileInfo->LastWriteTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+	fileInfo->ChangeTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
 	fileInfo->IndexNumber = 0;
 	fileInfo->HardLinks = 0;
 	fileInfo->EaSize = 0;
@@ -269,12 +278,13 @@ static auto GetFileInfo(FSP_FILE_SYSTEM*, PVOID fileContext, FSP_FSCTL_FILE_INFO
 	}
 	fileInfo->ReparseTag = 0;
 	fileInfo->AllocationSize = common::AlignUp(fileInfo->FileSize, 0x200);
-	fileInfo->CreationTime = time(nullptr); // not correct, but we don't have a great way of fetching the fs create time rn (I probably should fix that but I'm lazy)
-	fileInfo->LastAccessTime = time(nullptr);
-	fileInfo->LastWriteTime = time(nullptr);
-	fileInfo->ChangeTime = time(nullptr);
+	fileInfo->CreationTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()); // not correct, but we don't have a great way of fetching the fs create time rn (I probably should fix that but I'm lazy)
+	fileInfo->LastAccessTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+	fileInfo->LastWriteTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+	fileInfo->ChangeTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
 	fileInfo->IndexNumber = 0;
 	fileInfo->HardLinks = 0;
+	fileInfo->EaSize = 0;
 
 	return STATUS_SUCCESS;
 }
@@ -291,12 +301,13 @@ static auto SetFileSize(FSP_FILE_SYSTEM*, PVOID fileContext, UINT64 newSize, BOO
 	fileInfo->FileSize = file->getSize();
 	fileInfo->ReparseTag = 0;
 	fileInfo->AllocationSize = common::AlignUp(fileInfo->FileSize, 0x200);
-	fileInfo->CreationTime = time(nullptr); // not correct, but we don't have a great way of fetching the fs create time rn (I probably should fix that but I'm lazy)
-	fileInfo->LastAccessTime = time(nullptr);
-	fileInfo->LastWriteTime = time(nullptr);
-	fileInfo->ChangeTime = time(nullptr);
+	fileInfo->CreationTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()); // not correct, but we don't have a great way of fetching the fs create time rn (I probably should fix that but I'm lazy)
+	fileInfo->LastAccessTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+	fileInfo->LastWriteTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+	fileInfo->ChangeTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
 	fileInfo->IndexNumber = 0;
 	fileInfo->HardLinks = 0;
+	fileInfo->EaSize = 0;
 
 	return STATUS_SUCCESS;
 }
@@ -306,7 +317,7 @@ static auto Rename(FSP_FILE_SYSTEM*, PVOID, PWSTR, PWSTR, BOOLEAN) -> NTSTATUS {
 	return STATUS_INVALID_DEVICE_REQUEST;
 }
 
-static auto ReadDirectory(FSP_FILE_SYSTEM* fileSystem, PVOID fileContext, PWSTR pattern, PWSTR marker, PVOID buffer, ULONG bufferLength, PULONG bytesTransferred) -> NTSTATUS {
+static auto ReadDirectory(FSP_FILE_SYSTEM*, PVOID fileContext, PWSTR, PWSTR marker, PVOID buffer, ULONG bufferLength, PULONG bytesTransferred) -> NTSTATUS {
 	auto dir = static_cast<IDirectory*>(fileContext);
 	LOG_INFO("ReadDirectory {} (marker: {}, buffer: {:#x})", dir->getName(), marker == nullptr ? "" : common::Utf16ToUtf8(marker), bufferLength);
 
@@ -322,15 +333,17 @@ static auto ReadDirectory(FSP_FILE_SYSTEM* fileSystem, PVOID fileContext, PWSTR 
 	} dirCbCaptures = { buffer, bufferLength, bytesTransferred };
 
 	auto entryCb = [](const DirectoryEntry& entry, void* userdata) -> bool {
+#pragma warning(disable : 4815) // zero-sized array in stack object
 		union {
 			UINT8 B[FIELD_OFFSET(FSP_FSCTL_DIR_INFO, FileNameBuf) + MAX_PATH * sizeof(WCHAR)];
 			FSP_FSCTL_DIR_INFO D;
 		} dirInfoBuf;
+#pragma warning(default : 4815) // zero-sized array in stack object
 
 		auto captures = reinterpret_cast<decltype(dirCbCaptures)*>(userdata);
 
 		auto dirInfo = std::addressof(dirInfoBuf.D);
-		dirInfo->Size = offsetof(FSP_FSCTL_DIR_INFO, FileNameBuf) + entry.name.size() * sizeof(wchar_t);
+		dirInfo->Size = static_cast<UINT16>(offsetof(FSP_FSCTL_DIR_INFO, FileNameBuf) + entry.name.size() * sizeof(wchar_t));
 		if (entry.type == Type::Directory) {
 			dirInfo->FileInfo.FileAttributes = FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY;
 			dirInfo->FileInfo.FileSize = 0;
@@ -342,13 +355,14 @@ static auto ReadDirectory(FSP_FILE_SYSTEM* fileSystem, PVOID fileContext, PWSTR 
 		dirInfo->FileInfo.ReparseTag = 0;
 		dirInfo->FileInfo.AllocationSize = common::AlignUp(dirInfo->FileInfo.FileSize, 0x200);
 		dirInfo->FileInfo.CreationTime = entry.createTime;
-		dirInfo->FileInfo.LastAccessTime = time(nullptr);
+		dirInfo->FileInfo.LastAccessTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
 		dirInfo->FileInfo.LastWriteTime = entry.createTime;
 		dirInfo->FileInfo.ChangeTime = entry.createTime;
 		dirInfo->FileInfo.IndexNumber = 0;
 		dirInfo->FileInfo.HardLinks = 0;
+		dirInfo->FileInfo.EaSize = 0;
 		const auto path = common::Utf8ToUtf16(entry.name);
-		wcscpy_s(dirInfo->FileNameBuf, MAX_PATH, path.c_str());
+		::wcscpy_s(dirInfo->FileNameBuf, MAX_PATH, path.c_str());
 
 		return FspFileSystemAddDirInfo(dirInfo, captures->buffer, captures->bufferLength, captures->bytesTransferred);
 	};

@@ -15,6 +15,8 @@ class INode {
 public:
     [[nodiscard]] virtual auto getType() const -> Type = 0;
     [[nodiscard]] virtual auto getName() const -> std::string_view = 0;
+
+    virtual ~INode() = default;
 };
 
 } // namespace nxmount::fs

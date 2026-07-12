@@ -20,7 +20,7 @@ class IDirectory : public INode {
 public:
     [[nodiscard]] auto getType() const -> Type override { return Type::Directory; }
 
-    virtual ~IDirectory() = default;
+    ~IDirectory() override = default;
     virtual auto getCount(std::size_t* count) const -> Result = 0;
     virtual auto read(std::size_t* entryCount, DirectoryEntry* entries, std::size_t maxEntries, std::size_t offset) const -> Result = 0;
 

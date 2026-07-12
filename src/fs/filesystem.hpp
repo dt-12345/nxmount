@@ -4,7 +4,13 @@
 #if !defined(WIN32) || defined(USE_WINFUSE)
 #include "common/fuse.hpp"
 #else
+#if defined(_MSC_VER)
+#pragma warning(disable : 4324) // structure was padded due to alignment specifier
+#endif
 #include <winfsp/winfsp.h>
+#if defined(_MSC_VER)
+#pragma warning(default : 4324) // structure was padded due to alignment specifier
+#endif
 #endif
 #include "common/utils.hpp"
 #include "fs/directory.hpp"
@@ -78,8 +84,8 @@ public:
     static const FSP_FILE_SYSTEM_INTERFACE cFspInterface;
 
     struct FsHandle {
-        std::unique_ptr<IFileSystem> fs;
-        FSP_FILE_SYSTEM* fspFs;
+        std::unique_ptr<IFileSystem> fs = nullptr;
+        FSP_FILE_SYSTEM* fspFs = nullptr;
     };
 #endif
 };

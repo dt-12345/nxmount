@@ -8,6 +8,10 @@
 
 #include <memory>
 
+#if defined(_MSC_VER)
+#pragma warning(disable : 4201) // nameless struct/union
+#endif
+
 namespace nxmount::formats {
 
 enum class GameCardSize : std::uint8_t {
@@ -229,3 +233,7 @@ private:
 };
 
 } // namespace nxmount::formats
+
+#if defined(_MSC_VER)
+#pragma warning(default : 4201) // nameless struct/union
+#endif

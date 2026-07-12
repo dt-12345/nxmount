@@ -1,8 +1,8 @@
 #pragma once
 
-#include "log/logging.hpp"
-
 #if defined(WIN32)
+
+#include "log/logging.hpp"
 
 #include <windows.h>
 

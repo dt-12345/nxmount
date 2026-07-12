@@ -21,7 +21,12 @@ mkdir ~/Game
 nxmount --base MyGame.nsp --update GameUpdate.nsp --mount ~/Game
 ```
 
-Note that on Windows, Windows Defender causes a significant performance penalty if active on the mounted drive.
+For basic usage, run:
+```sh
+nxmount --help
+```
+
+Note that on Windows, Windows Defender causes a significant performance penalty if real-time scanning is active on the mounted drive.
 
 ## TODO:
 - Proper handling of add-on content
@@ -29,10 +34,10 @@ Note that on Windows, Windows Defender causes a significant performance penalty 
 - Performance optimizations
   - Be smarter about what we cache and what we don't
   - Maybe increase verification + romfs lookup caches
-  - Also figure out why the WinFsp driver runs worse than the WinFsp FUSE driver (surely it's not just because MSVC is that much worse...)
 - Convert WinFsp FUSE version into a background service
   - Currently runs in the foreground regardless of the CLI option because only the CygWin version supports daemonization
 - Register WinFsp version as a service
   - WinFsp provides a relatively straightforward way to do this
 - Memory usage is too high for such a simple project
+  - For performance, we keep the entire romfs file tables in memory but for TotK, that's ~25 mb per version
 - Refactor error handling to use std::expected maybe?

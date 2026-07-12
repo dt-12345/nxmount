@@ -380,7 +380,13 @@ static auto ApplyUpdate(
 
 #include "common/unicode.hpp"
 
+#if defined(_MSC_VER)
+#pragma warning(disable : 4324) // structure was padded due to alignment specifier
+#endif
 #include <winfsp/winfsp.h>
+#if defined(_MSC_VER)
+#pragma warning(default : 4324) // structure was padded due to alignment specifier
+#endif
 #include <windows.h>
 
 #include <chrono>
@@ -418,7 +424,7 @@ static auto SvcStart(FSP_SERVICE* service, ULONG argc, PWSTR* argv) -> NTSTATUS 
     volumeParams.SectorsPerAllocationUnit = 1;
     volumeParams.VolumeCreationTime = system_clock::to_time_t(system_clock::now());
     volumeParams.VolumeSerialNumber = 0;
-    volumeParams.FileInfoTimeout = -1;
+    volumeParams.FileInfoTimeout = static_cast<UINT32>(-1);
     volumeParams.CaseSensitiveSearch = 1;
     volumeParams.CasePreservedNames = 1;
     volumeParams.UnicodeOnDisk = 1;
@@ -466,7 +472,7 @@ static auto SvcStart(FSP_SERVICE* service, ULONG argc, PWSTR* argv) -> NTSTATUS 
         if (stderrHandle != INVALID_HANDLE_VALUE) {
             FspDebugLogSetHandle(stderrHandle);
         }
-        FspFileSystemSetDebugLog(fsHandle->fspFs, -1);
+        FspFileSystemSetDebugLog(fsHandle->fspFs, static_cast<UINT32>(-1));
     } else {
         FspFileSystemSetDebugLog(fsHandle->fspFs, 0);
     }
@@ -512,6 +518,8 @@ static auto ConfigToArgs(const Config& config) -> std::vector<const char*> {
         "nxmount", config.mountPoint.c_str(),
 #if !defined(WIN32)
         "-o", "allow_other",
+#else
+        "-o", "FileInfoTimeout=-1",
 #endif
         "-o", "kernel_cache",
     };
