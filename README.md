@@ -15,10 +15,13 @@ Key derivation and management code was taken from Hactool and is under the ISC l
 ```sh
 # Windows
 nxmount --base MyGame.nsp --update GameUpdate.nsp --mount Z:
+# to unmount, kill the process with Ctrl-C
 
 # Linux
 mkdir ~/Game
 nxmount --base MyGame.nsp --update GameUpdate.nsp --mount ~/Game
+# to unmount
+umount ~/Game
 ```
 
 **Note that on Windows, Windows Defender causes a significant performance penalty if real-time scanning is active on the mounted drive.**
