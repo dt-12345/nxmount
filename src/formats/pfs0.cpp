@@ -690,30 +690,30 @@ auto PartitionFileSystemBase::applyAddOnContent(std::unique_ptr<PartitionFileSys
                 continue;
             }
 
-            std::unique_ptr<fs::IDirectory> metaDir;
-            if (NX_FAILED(contentEntry.fs->openDirectory(std::addressof(metaDir), "Meta/0"))) {
+            std::unique_ptr<fs::IDirectory> candidateMetaDir;
+            if (NX_FAILED(contentEntry.fs->openDirectory(std::addressof(candidateMetaDir), "Meta/0"))) {
                 continue;
             }
 
-            std::string cnmtPath = "";
-            for (const auto& dirEntry : *metaDir) {
+            std::string candidateCnmtPath = "";
+            for (const auto& dirEntry : *candidateMetaDir) {
                 if (dirEntry.type == fs::Type::Directory) {
                     continue;
                 }
 
-                cnmtPath = std::string("Meta/0/") + dirEntry.name;
+                candidateCnmtPath = std::string("Meta/0/") + dirEntry.name;
             }
 
-            if (cnmtPath.empty()) {
+            if (candidateCnmtPath.empty()) {
                 continue;
             }
 
-            std::unique_ptr<fs::IFile> cnmtFile;
-            if (NX_FAILED(contentEntry.fs->openFile(std::addressof(cnmtFile), cnmtPath, fs::OpenMode::Read))) {
+            std::unique_ptr<fs::IFile> candidateCnmtFile;
+            if (NX_FAILED(contentEntry.fs->openFile(std::addressof(candidateCnmtFile), candidateCnmtPath, fs::OpenMode::Read))) {
                 continue;
             }
 
-            const auto baseReader = ContentMetaReader(std::make_unique<provider::FileProvider>(std::move(cnmtFile)));
+            const auto baseReader = ContentMetaReader(std::make_unique<provider::FileProvider>(std::move(candidateCnmtFile)));
             if (!baseReader.isValid()) {
                 continue;
             }

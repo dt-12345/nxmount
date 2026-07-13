@@ -23,7 +23,7 @@ struct formatter<std::uint8_t[N]> {
 
 } // namespace fmt
 
-#ifdef ENABLE_LOGGING
+#if defined(ENABLE_LOGGING)
 
 #include <atomic>
 #include <iterator>
@@ -74,6 +74,7 @@ public:
     }
 
     static auto SetLogLevel(Level lvl) -> void { sLogLevel = lvl; }
+    static auto SetLogFile(std::string_view path) -> void;
 
 private:
     static auto LogImpl(std::string_view msg, Level lvl) -> void;

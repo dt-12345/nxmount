@@ -30,8 +30,9 @@ struct Config {
     std::string_view updateType;
     std::vector<std::string_view> aocPaths;
     std::string_view aocType;
-#ifdef ENABLE_LOGGING
+#if defined(ENABLE_LOGGING)
     std::string_view logLevel;
+    std::string_view logFile;
 #endif
     bool foreground = false;
     bool debug = false;
@@ -87,7 +88,7 @@ enum class FileType {
     }
 };
 
-#ifdef ENABLE_LOGGING
+#if defined(ENABLE_LOGGING)
 [[nodiscard]] static auto ParseLogLevel(std::string_view level) -> logging::Logger::Level {
     if (level == "info") {
         return logging::Logger::Info;
@@ -210,6 +211,7 @@ static auto ApplyDLC(std::unique_ptr<fs::IFileSystem>& base, std::unique_ptr<fs:
 }
 
 [[noreturn]] auto PrintUsage() -> void {
+    LOG_WARNING("Invalid arguments");
     fmt::print(
         "nxmount [options]\n"
         "  Options:\n"
@@ -224,12 +226,13 @@ static auto ApplyDLC(std::unique_ptr<fs::IFileSystem>& base, std::unique_ptr<fs:
         "    --aoc, -a          path to an add-on content (DLC) NSP to apply to the base file\n"
 #if defined(ENABLE_LOGGING)
         "    --log, -l          log level (info, warning, error, fatal)\n"
+        "    --log-file         log file to output logs to\n"
 #endif
         "    --help, -h         print help message (what you're reading right now)\n"
         "    --foreground, -f   run process in the foreground (i.e. do not daemonize)\n"
         "    --debug, -d        output driver debug logs\n"
     );
-#if !defined(WIN32) || defined(USE_WINFUSE)
+#if !defined(WIN32)
     std::exit(0);
 #else
     throw std::runtime_error("Arguments");
@@ -245,6 +248,9 @@ static auto ApplyDLC(std::unique_ptr<fs::IFileSystem>& base, std::unique_ptr<fs:
 
     for (auto argp = argv + 1; argp < argv + argc; ++argp) {
         const auto arg = std::string_view(*argp);
+        if (arg.empty()) {
+            continue;
+        }
         if (arg.starts_with("--") || arg.starts_with('-')) {
             const bool isShortOpt = !arg.starts_with("--");
             const auto eqPos = arg.find('=');
@@ -265,9 +271,6 @@ static auto ApplyDLC(std::unique_ptr<fs::IFileSystem>& base, std::unique_ptr<fs:
                     }
                 } else {
                     value = arg.substr(eqPos + 1);
-                    if (opt.empty()) {
-                        PrintUsage();
-                    }
                 }
             };
             #define MATCH_OPT(LONG, SHORT) opt == (isShortOpt ? (SHORT) : (LONG))
@@ -298,9 +301,11 @@ static auto ApplyDLC(std::unique_ptr<fs::IFileSystem>& base, std::unique_ptr<fs:
                 SET_VALUE(config->updates.emplace_back());
             } else if (MATCH_OPT("aoc", "a")) {
                 SET_VALUE(config->aocPaths.emplace_back());
-#ifdef ENABLE_LOGGING
+#if defined(ENABLE_LOGGING)
             } else if (MATCH_OPT("log", "l")) {
                 SET_VALUE(config->logLevel);
+            } else if (MATCH_LONG_OPT("log-file")) {
+                SET_VALUE(config->logFile);
 #endif
             } else if (MATCH_OPT("help", "h")) {
                 PrintUsage();
@@ -317,15 +322,19 @@ static auto ApplyDLC(std::unique_ptr<fs::IFileSystem>& base, std::unique_ptr<fs:
     }
 
     if (config->mountPoint.empty() || config->basePath.empty()) {
-        fmt::println("Please provide a mount point and base file path with --mount and --base");
+        LOG_WARNING("Please provide a mount point and base file path with --mount and --base");
         PrintUsage();
     }
 
-#ifdef ENABLE_LOGGING
+#if defined(ENABLE_LOGGING)
     if (!config->logLevel.empty()) {
         logging::Logger::SetLogLevel(ParseLogLevel(config->logLevel));
     } else {
         logging::Logger::SetLogLevel(logging::Logger::Warning);
+    }
+
+    if (!config->logFile.empty()) {
+        logging::Logger::SetLogFile(config->logFile);
     }
 #endif
 

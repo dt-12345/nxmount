@@ -528,6 +528,7 @@ auto KeyManager::setExternalTitleKey(const std::uint8_t* titleKey) -> void {
 
 KeyManager::KeyManager() {
     std::memset(std::addressof(mKeySet), 0, sizeof(mKeySet));
+    std::memset(mExternalTitleKey, 0, sizeof(mExternalTitleKey));
 }
 
 } // namespace nxmount::crypto

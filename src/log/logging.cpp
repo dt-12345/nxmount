@@ -1,4 +1,4 @@
-#ifdef ENABLE_LOGGING
+#if defined(ENABLE_LOGGING)
 
 #include "common/simple_queue.hpp"
 #include "log/logging.hpp"
@@ -7,6 +7,7 @@
 #include <fmt/std.h>
 
 #include <chrono>
+#include <fstream>
 #include <stacktrace>
 #include <thread>
 #include <utility>
@@ -37,8 +38,8 @@ static auto PrintStacktrace() -> void {
 }
 
 [[noreturn]] static auto TerminateHandler() -> void {
+    fmt::println("std::terminate called");
     PrintStacktrace();
-    fmt::println(stderr, "Stacktrace:\n{}", std::to_string(std::stacktrace::current(1)));
     ShutdownAndAbort();
 }
 
@@ -57,7 +58,7 @@ struct Message {
 
 class LoggerImpl : public common::Queue<Message> {
 public:
-    LoggerImpl() : mThread(&LoggerImpl::run, this) {
+    LoggerImpl() : mThread(&LoggerImpl::run, this), mLogFile() {
         std::set_terminate(TerminateHandler);
 
 #if defined(WIN32)
@@ -90,14 +91,25 @@ public:
     }
 
     auto flush() -> void {
-        const auto _ = std::scoped_lock(mMutex); // TODO: will this deadlock if the thread that throws never released the lock?
-        while (!mQueue.empty()) {
-            const auto msg = std::move(mQueue.back());
-            mQueue.pop_back();
-            fmt::println(msg.sink, "{}", msg.msg);
+        {
+            const auto _ = std::scoped_lock(mMutex); // TODO: will this deadlock if the thread that throws never released the lock?
+            while (!mQueue.empty()) {
+                const auto msg = std::move(mQueue.back());
+                mQueue.pop_back();
+                fmt::println(msg.sink, "{}", msg.msg);
+                const auto _ = std::scoped_lock(mLogFileMutex);
+                if (mLogFile.is_open()) {
+                    mLogFile.write(msg.msg.c_str(), msg.msg.size());
+                    mLogFile.write("\n", 1);
+                }
+            }
         }
         std::fflush(stdout);
         std::fflush(stderr);
+        const auto _ = std::scoped_lock(mLogFileMutex);
+        if (mLogFile.is_open()) {
+            mLogFile.flush();
+        }
     }
 
     auto shutdown() -> void {
@@ -115,6 +127,11 @@ public:
             const auto msg = pop();
             if (msg) {
                 fmt::println(msg->sink, "{}", msg->msg);
+                const auto _ = std::scoped_lock(mLogFileMutex);
+                if (mLogFile.is_open()) {
+                    mLogFile.write(msg->msg.c_str(), msg->msg.size());
+                    mLogFile.write("\n", 1);
+                }
             } else {
                 break;
             }
@@ -122,7 +139,11 @@ public:
     }
 
 private:
+    friend class Logger;
+
     std::thread mThread;
+    std::mutex mLogFileMutex;
+    std::ofstream mLogFile;
 };
 
 static auto sLogger = LoggerImpl();
@@ -135,6 +156,11 @@ static constexpr auto GetLevelString(Logger::Level lvl) -> std::string_view {
         case Logger::Level::Fatal: return "Fatal";
         default: std::unreachable();
     }
+}
+
+auto Logger::SetLogFile(std::string_view path) -> void {
+    const auto _ = std::scoped_lock(sLogger.mLogFileMutex);
+    sLogger.mLogFile.open(std::string(path));
 }
 
 auto Logger::LogImpl(std::string_view msg, Level lvl) -> void {

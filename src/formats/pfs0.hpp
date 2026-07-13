@@ -39,9 +39,9 @@ public:
     PartitionFileSystemBase(provider::UniqueProvider provider, std::string_view name) :mProvider(std::move(provider)), mName(name), mInitTime(time(nullptr)) {}
 
     struct Entry {
-        std::string name;
-        std::size_t offset;
-        std::size_t size;
+        std::string name = "";
+        std::size_t offset = 0;
+        std::size_t size = 0;
         std::unique_ptr<fs::IFileSystem> fs = nullptr;
 
         auto isNull() const -> bool {

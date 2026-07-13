@@ -12,25 +12,25 @@
 namespace nxmount::formats {
     
 auto GetDisplayName(provider::UniqueProvider& provider) -> std::string {
-    ApplicationControlProperty header;
-    if (provider->read(std::addressof(header), sizeof(header), 0) != sizeof(header)) {
+    auto header = std::make_unique<ApplicationControlProperty>();
+    if (provider->read(header.get(), sizeof(*header), 0) != sizeof(*header)) {
         return "";
     }
 
     std::string name = "";
-    if (header.titleFormat == TitleFormat::Uncompressed) {
+    if (header->titleFormat == TitleFormat::Uncompressed) {
         for (std::size_t i = 0; i < 0x10; ++i) {
-            if (header.titles[i].name[0]) {
-                name = header.titles[i].name;
+            if (header->titles[i].name[0]) {
+                name = header->titles[i].name;
             }
         }
     } else {
         auto stream = z_stream{};
         auto titleBlock = std::vector<ApplicationTitle>(0x20);
-        stream.next_in = reinterpret_cast<z_const Bytef*>(header.compressedTitles.data);
-        stream.avail_in = header.compressedTitles.dataSize;
+        stream.next_in = reinterpret_cast<z_const Bytef*>(header->compressedTitles.data);
+        stream.avail_in = header->compressedTitles.dataSize;
         stream.next_out = reinterpret_cast<Bytef*>(titleBlock.data());
-        stream.avail_out = titleBlock.size() * sizeof(ApplicationTitle);
+        stream.avail_out = static_cast<uInt>(titleBlock.size() * sizeof(ApplicationTitle));
 
         if (const auto res = inflateInit2(&stream, -15); res != Z_OK) {
             LOG_ERROR("Failed to initialize z_stream for ApplicationControlProperty title block decompression! {} ({})", res, stream.msg != nullptr ? stream.msg : "<null>");
@@ -56,10 +56,10 @@ auto GetDisplayName(provider::UniqueProvider& provider) -> std::string {
         }
     }
 
-    if (header.displayVersion[0]) {
-        char displayVersion[sizeof(header.displayVersion) + 1];
-        std::memcpy(displayVersion, header.displayVersion, sizeof(header.displayVersion));
-        displayVersion[sizeof(header.displayVersion)] = '\0';
+    if (header->displayVersion[0]) {
+        char displayVersion[sizeof(header->displayVersion) + 1];
+        std::memcpy(displayVersion, header->displayVersion, sizeof(header->displayVersion));
+        displayVersion[sizeof(header->displayVersion)] = '\0';
         fmt::format_to(std::back_inserter(name), " {}", displayVersion);
     }
 
