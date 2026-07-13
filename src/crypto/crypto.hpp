@@ -90,8 +90,8 @@ public:
 
     auto tryAcquire() -> T* {
         for (auto& free : mFree) {
-            if (free != nullptr) {
-                auto decryptor = free.exchange(nullptr);
+            if (T* decryptor = free; decryptor != nullptr) {
+                while (!free.compare_exchange_strong(decryptor, nullptr, std::memory_order_release)) { /* ... */ }
                 return decryptor;
             }
         }
