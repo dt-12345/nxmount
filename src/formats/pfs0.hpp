@@ -74,6 +74,9 @@ public:
 protected:
     virtual auto processEntry(Entry& entry, std::size_t index) -> bool;
 
+    auto tryApplyUpdate(PartitionFileSystemBase& update) -> bool;
+    auto tryApplyAddOnContent(PartitionFileSystemBase& update) -> bool;
+
     auto tryParseTicket() const -> void;
     auto rearrangeNCAs() -> void;
 

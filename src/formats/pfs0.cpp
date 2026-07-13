@@ -280,6 +280,8 @@ auto PartitionFileSystemBase::init() -> void {
 
     rearrangeNCAs();
 
+    tryApplyUpdate(*this);
+
 #if defined(WIN32) // windows doesn't allow mounting empty directories
     if (mEntries.empty()) {
         mEntries.emplace_back("__NULL_FILE__", 0xffff'ffff'ffff'ffff, 0, nullptr);
@@ -457,11 +459,11 @@ auto PartitionFileSystemBase::getContentMetaReader(std::uint64_t id, fs::IFileSy
     return path;
 }
 
-auto PartitionFileSystemBase::applyUpdate(std::unique_ptr<PartitionFileSystemBase> update) -> void {
+auto PartitionFileSystemBase::tryApplyUpdate(PartitionFileSystemBase& update) -> bool {
     bool applied = false;
     // we assume that if there is metadata to be able to apply the patch, then we will have already rearranged the NCAs properly
     auto entriesToAdd = std::vector<Entry>{};
-    for (auto& entry : update->mEntries) {
+    for (auto& entry : update.mEntries) {
         if (entry.name.empty() || entry.fs == nullptr) {
             continue;
         }
@@ -613,19 +615,25 @@ auto PartitionFileSystemBase::applyUpdate(std::unique_ptr<PartitionFileSystemBas
 
             if (baseFs != nullptr && updateFs != nullptr) {
                 updateFs->setBase(*baseFs);
-                auto& updateEntry = mEntries.emplace_back();
-                updateEntry.name = std::move(entry.name);
-                updateEntry.fs = std::move(entry.fs);
-                updateEntry.offset = 0;
-                updateEntry.size = 0;
-                applied = true;
+                if (std::addressof(update) != this) {
+                    auto& updateEntry = mEntries.emplace_back();
+                    updateEntry.name = std::move(entry.name);
+                    updateEntry.fs = std::move(entry.fs);
+                    updateEntry.offset = 0;
+                    updateEntry.size = 0;
+                    applied = true;
+                }
             } else {
                 LOG_WARNING("Missing file {} {} for type {}", path, basePath, std::to_underlying(info.contentType));
             }
         }
     }
 
-    if (!applied) {
+    return applied;
+}
+
+auto PartitionFileSystemBase::applyUpdate(std::unique_ptr<PartitionFileSystemBase> update) -> void {
+    if (tryApplyUpdate(*update)) {
         LOG_INFO("No applicable updates found");
     } else {
         auto& entry = mEntries.emplace_back();
@@ -637,11 +645,11 @@ auto PartitionFileSystemBase::applyUpdate(std::unique_ptr<PartitionFileSystemBas
     }
 }
 
-auto PartitionFileSystemBase::applyAddOnContent(std::unique_ptr<PartitionFileSystemBase> aoc) -> void {
+auto PartitionFileSystemBase::tryApplyAddOnContent(PartitionFileSystemBase& aoc) -> bool {
     bool applied = false;
     // we assume that if there is metadata to be able to apply the patch, then we will have already rearranged the NCAs properly
     auto entriesToAdd = std::vector<Entry>{};
-    for (auto& entry : aoc->mEntries) {
+    for (auto& entry : aoc.mEntries) {
         if (entry.name.empty() || entry.fs == nullptr) {
             continue;
         }
@@ -726,24 +734,30 @@ auto PartitionFileSystemBase::applyAddOnContent(std::unique_ptr<PartitionFileSys
             break;
         }
         if (applicable) {
-            auto& aocEntry = mEntries.emplace_back();
-            aocEntry.name = std::move(entry.name);
-            aocEntry.fs = std::move(entry.fs);
-            aocEntry.size = 0;
-            aocEntry.offset = 0;
+            if (std::addressof(aoc) != this) {
+                auto& aocEntry = mEntries.emplace_back();
+                aocEntry.name = std::move(entry.name);
+                aocEntry.fs = std::move(entry.fs);
+                aocEntry.size = 0;
+                aocEntry.offset = 0;
+            }
             applied = true;
         }
     }
 
-    if (!applied) {
-        LOG_INFO("No applicable DLC found");
-    } else {
+    return applied;
+}
+
+auto PartitionFileSystemBase::applyAddOnContent(std::unique_ptr<PartitionFileSystemBase> aoc) -> void {
+    if (tryApplyAddOnContent(*aoc)) {
         auto& entry = mEntries.emplace_back();
         entry.fs = std::move(aoc);
         entry.name = "";
         entry.offset = 0;
         entry.size = 0;
         LOG_INFO("Applied DLC to {}", mName);
+    } else {
+        LOG_INFO("No applicable DLC found");
     }
 }
 
