@@ -634,14 +634,14 @@ auto PartitionFileSystemBase::tryApplyUpdate(PartitionFileSystemBase& update) ->
 
 auto PartitionFileSystemBase::applyUpdate(std::unique_ptr<PartitionFileSystemBase> update) -> void {
     if (tryApplyUpdate(*update)) {
-        LOG_INFO("No applicable updates found");
-    } else {
         auto& entry = mEntries.emplace_back();
         entry.fs = std::move(update); // take ownership of the parent fs bc we need it still
         entry.name = "";
         entry.offset = 0;
         entry.size = 0;
         LOG_INFO("Applied update to {}", mName);
+    } else {
+        LOG_INFO("No applicable updates found");
     }
 }
 
