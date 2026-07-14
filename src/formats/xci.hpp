@@ -184,6 +184,37 @@ struct GameCardImageHeaderT2 {
 };
 static_assert(sizeof(GameCardImageHeaderT2) == 0x200);
 
+struct GameCardCertificateHeader {
+    static constexpr const auto cMagic = common::MakeMagic("CERT");
+
+    std::uint8_t headerSignature[0x100];
+    std::uint32_t magic;
+    std::uint32_t version;
+    std::uint8_t kekIndex;
+    std::uint8_t reserved0[7];
+    std::uint8_t deviceId[0x10];
+    std::uint8_t iv[0x10];
+    std::uint8_t hwKey[0x10];
+    std::uint8_t reserved1[0xc0];
+    std::uint8_t reserved2[0x7e00];
+};
+static_assert(sizeof(GameCardCertificateHeader) == 0x8000);
+
+struct GameCardHeaderCertificateHeader {
+    static constexpr const auto cMagic = common::MakeMagic("CHVC");
+
+    std::uint8_t headerSignature[0x100];
+    std::uint32_t magic;
+    std::uint32_t version;
+    std::uint64_t unknown;
+    std::uint8_t signKeyIndex;
+    std::uint8_t reserve[0x1f];
+    std::uint8_t modulus[0x100];
+    std::uint8_t exponent[3];
+    std::uint8_t reserved[0x1cd];
+};
+static_assert(sizeof(GameCardHeaderCertificateHeader) == 0x400);
+
 class GameCardFileSystem : public fs::ReadOnlyFileSystemBase {
 public:
     GameCardFileSystem(provider::UniqueProvider provider, std::string_view name);
@@ -229,6 +260,8 @@ public:
     [[nodiscard]] auto getFileSystem() const -> const RootSha256FileSystem& { return *mFileSystem; }
 
 private:
+    [[nodiscard]] auto verifySignature(provider::UniqueProvider& provider, const GameCardImageHeader& header) -> bool;
+
     std::unique_ptr<RootSha256FileSystem> mFileSystem;
 };
 

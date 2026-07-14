@@ -42,6 +42,43 @@ static constinit const unsigned char sXCIHeaderPublicKey[0x100] = {
     return std::memcmp(digest, hash, sizeof(digest)) == 0;
 }
 
+auto GameCardFileSystem::verifySignature(provider::UniqueProvider& provider, const GameCardImageHeader& header) -> bool {
+    if ((header.attributes & GameCardAttribute::CardHeaderSignKey) == GameCardAttribute::CardHeaderSignKey) {
+        LOG_INFO("Gamecard has a header certificate");
+
+        GameCardImageHeaderT2 header2;
+        if (provider->read(std::addressof(header2), sizeof(header2), sizeof(header)) != sizeof(header2)) {
+            LOG_ERROR("Failed to read T2 header");
+            return false;
+        }
+
+        GameCardHeaderCertificateHeader certificate;
+        if (provider->read(std::addressof(certificate), sizeof(certificate), sizeof(header) + sizeof(header2)) != sizeof(certificate)) {
+            LOG_ERROR("Failed to read gamecard certificate");
+            return false;
+        }
+
+        const auto certValid = crypto::RsaPkcs1Verify(
+            std::addressof(certificate.magic), sizeof(certificate) - sizeof(certificate.headerSignature), certificate.headerSignature,
+            certificate.modulus, sizeof(certificate.modulus)
+        );
+        if (!certValid) {
+            LOG_ERROR("Failed to validate gamecard certificate");
+            return false;
+        }
+
+        return crypto::RsaPkcs1Verify(
+            std::addressof(header2.magic), sizeof(header2) - sizeof(header2.headerSignature), header2.headerSignature,
+            certificate.modulus, sizeof(certificate.modulus)
+        );
+    } else {
+        return crypto::RsaPkcs1Verify(
+            std::addressof(header.magic), sizeof(header) - sizeof(header.headerSignature), header.headerSignature,
+            sXCIHeaderPublicKey, sizeof(sXCIHeaderPublicKey)
+        );
+    }
+}
+
 GameCardFileSystem::GameCardFileSystem(provider::UniqueProvider provider, std::string_view name) {
     GameCardImageHeader header;
     if (provider->read(std::addressof(header), sizeof(header), 0) != sizeof(header)) {
@@ -54,12 +91,9 @@ GameCardFileSystem::GameCardFileSystem(provider::UniqueProvider provider, std::s
         throw std::runtime_error("GameCardFileSystem");
     }
 
-    if (!crypto::RsaPkcs1Verify(
-        std::addressof(header.magic), sizeof(header) - sizeof(header.headerSignature), header.headerSignature,
-        sXCIHeaderPublicKey, sizeof(sXCIHeaderPublicKey)
-    )) {
-        LOG_ERROR("XCI header is corrupted!");
-        throw std::runtime_error("GameCardFileSystem");
+    if (!verifySignature(provider, header)) {
+        LOG_WARNING("XCI header is potentially corrupted!");
+        // throw std::runtime_error("GameCardFileSystem");
     }
 
     bool decryptedHeader = false;

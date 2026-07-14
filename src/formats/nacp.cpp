@@ -22,6 +22,7 @@ auto GetDisplayName(provider::UniqueProvider& provider) -> std::string {
         for (std::size_t i = 0; i < 0x10; ++i) {
             if (header->titles[i].name[0]) {
                 name = header->titles[i].name;
+                break;
             }
         }
     } else {

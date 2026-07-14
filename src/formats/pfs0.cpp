@@ -595,7 +595,7 @@ auto PartitionFileSystemBase::tryApplyUpdate(PartitionFileSystemBase& update) ->
             NintendoContentArchiveFileSystem* baseFs = nullptr;
             NintendoContentArchiveFileSystem* updateFs = nullptr;
 
-            const auto path = FormatContentPath(info.contentId);;
+            const auto path = FormatContentPath(info.contentId);
             std::string_view updateFsName;
             for (const auto& [name, fs] : static_cast<const fs::WrapperFs*>(entry.fs.get())->getFileSystems()) {
                 if (fs->getRoot()->getName() == path) {
@@ -622,6 +622,7 @@ auto PartitionFileSystemBase::tryApplyUpdate(PartitionFileSystemBase& update) ->
                     updateEntry.offset = 0;
                     updateEntry.size = 0;
                     applied = true;
+                    break;
                 }
             } else {
                 LOG_WARNING("Missing file {} {} for type {}", path, basePath, std::to_underlying(info.contentType));
